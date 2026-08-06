@@ -9,12 +9,12 @@ CLI Python gom 2 công cụ audit file attachment (không cần chạy `migratio
 
 Cả hai đều là **CLI one-shot** (giống nhau về cách chạy). Không có HTTP API, không gọi `migration-service` / `storage-service`.
 
-Nguồn gốc Part 2:
+Nguồn gốc Part 2 (đã gỡ endpoint cũ):
 
-- `migration-service`: `GET /vbAttachmentTdhvp/exportMissingFiles` + `VbAttachmentMissingExportWriter`
-- `storage-service`: `POST /api/files/missing/jobs` + `MissingExportJobService` (SSH/`plocate`)
+- ~~`migration-service` `GET /vbAttachmentTdhvp/exportMissingFiles`~~ → `python export_missing.py`
+- ~~`storage-service` `/api/files/missing/*`~~ → cùng CLI trên
 
-Chi tiết DevOps / ảnh hưởng server file: xem [`docs/missing-export-job-for-devops.md`](docs/missing-export-job-for-devops.md) và [`docs/missing-export-job-flow.md`](docs/missing-export-job-flow.md).
+`storage-service` giờ chỉ còn `ready` / `exists` / `download` cho migration download file.
 
 ---
 
