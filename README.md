@@ -9,11 +9,14 @@ Luồng:
 3. So với mapping kỳ vọng (`dir_upload_path*`)
 4. Xuất Excel tổng hợp
 
-## Vì sao chọn Python?
+[//]: # (## Vì sao chọn Python?)
 
-- Ít tài nguyên hơn Java/Spring cho job one-shot
-- Thin mode Oracle (`oracledb`) không cần Instant Client
-- Paramiko SSH + batch `plocate` stdin (tránh `find` nặng)
+[//]: # ()
+[//]: # (- Ít tài nguyên hơn Java/Spring cho job one-shot)
+
+[//]: # (- Thin mode Oracle &#40;`oracledb`&#41; không cần Instant Client)
+
+[//]: # (- Paramiko SSH + batch `plocate` stdin &#40;tránh `find` nặng&#41;)
 
 ## Setup
 
