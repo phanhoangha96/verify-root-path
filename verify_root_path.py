@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit VB_ATTACHMENT.ROOT_PATH against real server paths via SSH plocate."""
+"""CLI: audit VB_ATTACHMENT.ROOT_PATH against real server paths via SSH plocate."""
 
 from __future__ import annotations
 

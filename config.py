@@ -58,8 +58,21 @@ class Settings:
     output_dir: Path
     output_file: str
 
+    # Part 2 — export missing files (migration-service + storage-service)
+    missing_export_csv_path: str
+    missing_export_batch_size: int
+    missing_export_throttle_every: int
+    missing_export_throttle_pause_ms: int
+    missing_export_per_check_delay_ms: int
+    missing_export_reconnect_every: int
+    missing_export_retry_attempts: int
+    missing_export_retry_backoff_ms: int
+    missing_export_search_by_file_name: bool
+    missing_export_limit: int
+    missing_export_work_dir: Path
 
-def load_settings() -> Settings:
+
+def load_settings(*, require_oracle: bool = True, require_ssh: bool = True) -> Settings:
     settings = Settings(
         oracle_user=os.getenv("ORACLE_USER", "LEGACY"),
         oracle_password=os.getenv("ORACLE_PASSWORD", ""),
@@ -84,11 +97,24 @@ def load_settings() -> Settings:
         exclude_deleted=_bool("EXCLUDE_DELETED", True),
         output_dir=Path(os.getenv("OUTPUT_DIR", "./output")),
         output_file=os.getenv("OUTPUT_FILE", "") or "",
+        missing_export_csv_path=os.getenv("MISSING_EXPORT_CSV_PATH", "") or "",
+        missing_export_batch_size=_int("MISSING_EXPORT_BATCH_SIZE", 100),
+        missing_export_throttle_every=_int("MISSING_EXPORT_THROTTLE_EVERY", 500),
+        missing_export_throttle_pause_ms=_int("MISSING_EXPORT_THROTTLE_PAUSE_MS", 200),
+        missing_export_per_check_delay_ms=_int("MISSING_EXPORT_PER_CHECK_DELAY_MS", 0),
+        missing_export_reconnect_every=_int("MISSING_EXPORT_RECONNECT_EVERY", 50000),
+        missing_export_retry_attempts=_int("MISSING_EXPORT_RETRY_ATTEMPTS", 3),
+        missing_export_retry_backoff_ms=_int("MISSING_EXPORT_RETRY_BACKOFF_MS", 500),
+        missing_export_search_by_file_name=_bool("MISSING_EXPORT_SEARCH_BY_FILE_NAME", False),
+        missing_export_limit=_int("MISSING_EXPORT_LIMIT", 0),
+        missing_export_work_dir=Path(
+            os.getenv("MISSING_EXPORT_WORK_DIR", "") or "./output/missing-export"
+        ),
     )
     missing = []
-    if not settings.oracle_password:
+    if require_oracle and not settings.oracle_password:
         missing.append("ORACLE_PASSWORD")
-    if not settings.ssh_password:
+    if require_ssh and not settings.ssh_password:
         missing.append("REMOTE_STORAGE_PASSWORD")
     if missing:
         raise SystemExit(f"Missing required env: {', '.join(missing)}. Copy .env.example -> .env")
