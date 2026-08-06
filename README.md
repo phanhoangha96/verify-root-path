@@ -17,6 +17,32 @@ Luồng:
 
 ## Setup
 
+### Windows (PowerShell)
+
+```powershell
+cd C:\Users\ADV 01\Downloads\verify-root-path-main
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+# điền ORACLE_PASSWORD và REMOTE_STORAGE_PASSWORD trong .env
+```
+
+Nếu bị chặn script:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+hoặc kích hoạt không cần đổi policy:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py
+```
+
+### macOS / Linux
+
 ```bash
 cd /Users/phanhoangha/IdeaProjects/Sotatek/root-path-audit
 python3 -m venv .venv
@@ -27,6 +53,15 @@ cp .env.example .env
 ```
 
 ## Chạy
+
+### Windows (PowerShell)
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python main.py
+```
+
+### macOS / Linux
 
 ```bash
 source .venv/bin/activate
