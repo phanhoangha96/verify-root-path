@@ -1,13 +1,14 @@
 # root-path-audit
 
-CLI Python gom 2 công cụ audit file attachment (không cần chạy `migration-service` / `storage-service`):
+CLI Python gom công cụ one-shot (không cần chạy `eoffice-business` / `migration-service` / `storage-service`):
 
 | Phần | Entry point | Việc làm |
 |------|-------------|----------|
 | **1. Root-path audit** | `python verify_root_path.py` | Sample `VB_ATTACHMENT.ROOT_PATH` ↔ folder thật trên server (plocate) → Excel |
 | **2. Export missing files** | `python export_missing.py` | Dump toàn bộ attachment → quét plocate → xuất file **không tìm thấy** (CSV/XLSX) |
+| **3. Solr metadata backfill** | `python solr_doc_meta_backfill.py` | Đọc Oracle NEW + LEGACY → ghi Solr `searchText` → Excel/JSON report |
 
-Cả hai đều là **CLI one-shot** (giống nhau về cách chạy). Không có HTTP API, không gọi `migration-service` / `storage-service`.
+Cả ba đều là **CLI one-shot**. Không có HTTP API, không gọi `eoffice-business` / `migration-service`.
 
 Nguồn gốc Part 2 (đã gỡ endpoint cũ):
 
@@ -177,6 +178,81 @@ Report mặc định:
 
 ---
 
+## Part 3 — Solr metadata backfill
+
+Index metadata (`searchText`) cho văn bản **đã có** trong DB. Không phải API trong `eoffice-business`.
+
+NEW và LEGACY nằm trên **hai Oracle khác nhau**. Script mở **hai connection** riêng:
+
+| Nguồn | Env | DB |
+|-------|-----|-----|
+| **LEGACY** | `ORACLE_*` (hoặc `LEGACY_ORACLE_*`) | DB migration, schema `LEGACY` — cùng chỗ Part 1/2 |
+| **NEW** | `NEW_ORACLE_*` | DB eoffice tenant — **không** dùng `ORACLE_DSN` |
+
+`--source ALL` (mặc định) yêu cầu **cả hai** khối đã điền password + DSN. Chỉ một nguồn thì `--source LEGACY` hoặc `--source NEW`.
+
+Nếu `.env` cũ chỉ có `ORACLE_*`, copy thêm `NEW_ORACLE_*` từ `.env.example` rồi điền DSN máy eoffice.
+
+`eoffice-business` chỉ index **realtime** khi tạo/sửa văn bản, comment, process. Script này backfill dữ liệu cũ (NEW tenant schema + LEGACY).
+
+Chuỗi `searchText` giống Java `DocMetaSolrServiceImpl`: bỏ dấu tiếng Việt, bỏ khoảng trắng / ký tự Solr đặc biệt, uppercase. Incoming gồm `docCode`, `quote`, `publisherName`, `outsidePublisherName`, `bookNumber`, `note`, comment, process note. Outgoing gồm `docCode`, `quote`, `publisherName`, `subBookNumber`, `bookNumber`, `outgoingNumber`, `note`, comment, process note.
+
+Solr doc id: `{objectId}_{deptId}_meta`, `indexType=META`.
+
+### Chạy
+
+```bash
+source .venv/bin/activate
+
+# NEW + LEGACY, incoming + outgoing
+python solr_doc_meta_backfill.py
+
+# Chỉ LEGACY, văn bản đến
+python solr_doc_meta_backfill.py --source LEGACY --object-type 1
+
+# Thử NEW, không ghi Solr
+python solr_doc_meta_backfill.py --source NEW --dry-run --limit 50
+
+# Nhiều tenant NEW
+python solr_doc_meta_backfill.py --source NEW --new-tenants-file ./new_oracle_tenants.json
+```
+
+Report mặc định:
+
+- `output/solr_doc_meta_backfill_YYYYMMDD_HHMMSS.xlsx`
+- `output/solr_doc_meta_backfill_YYYYMMDD_HHMMSS.json`
+
+`--dry-run`: cột `Indexed` = số doc **sẽ** ghi Solr.
+
+### Excel sheets
+
+| Sheet | Nội dung |
+|-------|----------|
+| `Overview` | Tổng scanned / indexed / skipped / errors, thời gian, Solr host |
+| `By_source` | NEW vs LEGACY × incoming (1) / outgoing (2) |
+| `Skipped` | Thiếu `toDeptId`/`publisherId`, hoặc `searchText` rỗng (tối đa 20_000) |
+| `Errors` | Lỗi ghi Solr / FATAL (tối đa 20_000) |
+| `Skip_reasons` | Gom theo lý do skip |
+
+### Config Part 3 (`.env`)
+
+| Key | Ý nghĩa | Default |
+|-----|---------|---------|
+| `SOLR_HOST` | Solr base, ví dụ `http://localhost:8983/solr` | `http://localhost:8983/solr` |
+| `SOLR_CORE` | Core name | `eoffice_document` |
+| `SOLR_USER` / `SOLR_PASSWORD` | HTTP basic (để trống nếu không auth) | *(rỗng)* |
+| `SOLR_TENANT_CODE` | `tenantCode` ghi lên Solr (LEGACY; NEW fallback) | *(rỗng)* |
+| `SOLR_BACKFILL_BATCH_SIZE` | Số doc / 1 page Oracle + 1 POST Solr | `200` |
+| `ORACLE_*` / `LEGACY_ORACLE_*` | Oracle **LEGACY** (DB migration) | như Part 1 |
+| `NEW_ORACLE_USER` / `PASSWORD` / `DSN` / `SCHEMA` | Oracle **NEW** (DB eoffice, host khác) | *(bắt buộc nếu `--source ALL` hoặc `NEW`)* |
+| `NEW_ORACLE_TENANTS_FILE` | JSON nhiều tenant NEW | *(rỗng)* |
+
+NEW là multi-tenant: mỗi schema/DSN chạy một lần, hoặc tự tạo JSON rồi `--new-tenants-file`.
+
+Incoming LEGACY lấy `EOFFICE_TO_DEPT_ID` từ `V_VB_INCOMING_DOC_V2`. Doc không map phòng ban → skip `MISSING_DEPT_ID`.
+
+---
+
 ## Config SSH / Oracle chung
 
 | Key | Ý nghĩa |
@@ -195,6 +271,8 @@ Report mặc định:
 |------|---------|
 | `verify_root_path.py` | Part 1 CLI |
 | `export_missing.py` | Part 2 CLI |
+| `solr_doc_meta_backfill.py` | Part 3 CLI — backfill Solr metadata |
+| `solr_backfill_*.py` | Oracle / Solr / normalize / report cho Part 3 |
 | `db.py` | Oracle sample + dump CSV toàn bộ attachment |
 | `ssh_plocate.py` | SSH batch `plocate` |
 | `missing_scan.py` | Quét missing (logic storage-service job) |
