@@ -143,6 +143,8 @@ def _run_stream(
             f"errors={report.errors}",
             flush=True,
         )
+    if total == 0:
+        print(f"  {label}: scanned=0 (no rows from Oracle)", flush=True)
 
 
 def _wanted(object_type_arg: str) -> List[int]:

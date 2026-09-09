@@ -178,7 +178,7 @@ def iter_new_incoming(
                    NOTE, TO_DEPT_ID, TENANT_CODE
             FROM {table}
             WHERE NVL(IS_DELETE, 0) = 0
-              AND ID > :last_id
+              AND (:last_id IS NULL OR ID > :last_id)
               {tenant_sql}
             ORDER BY ID
         ) WHERE ROWNUM <= :batch_size
@@ -215,7 +215,7 @@ def iter_new_outgoing(
                    OUTGOING_NUMBER, NOTE, PUBLISHER_ID, TENANT_CODE
             FROM {table}
             WHERE NVL(IS_DELETE, 0) = 0
-              AND ID > :last_id
+              AND (:last_id IS NULL OR ID > :last_id)
               {tenant_sql}
             ORDER BY ID
         ) WHERE ROWNUM <= :batch_size
@@ -250,7 +250,7 @@ def iter_legacy_incoming(
                    NOTE, EOFFICE_TO_DEPT_ID, CAST(NULL AS VARCHAR2(100)) AS TENANT_CODE
             FROM {table}
             WHERE NVL(IS_DELETE, 0) = 0
-              AND ID > :last_id
+              AND (:last_id IS NULL OR ID > :last_id)
             ORDER BY ID
         ) WHERE ROWNUM <= :batch_size
     """
@@ -285,7 +285,7 @@ def iter_legacy_outgoing(
                    CAST(NULL AS VARCHAR2(100)) AS TENANT_CODE
             FROM {table}
             WHERE NVL(IS_DELETE, 0) = 0
-              AND ID > :last_id
+              AND (:last_id IS NULL OR ID > :last_id)
             ORDER BY ID
         ) WHERE ROWNUM <= :batch_size
     """
@@ -320,7 +320,8 @@ def _iter_mapped(
     incoming_process_id_col: str,
     incoming_process_table_filter: str,
 ) -> Iterator[List[DocRow]]:
-    last_id = ""
+    # Oracle treats '' as NULL, so "ID > ''" matches nothing. First page uses NULL.
+    last_id = None
     fetched = 0
     while True:
         remaining = batch_size
