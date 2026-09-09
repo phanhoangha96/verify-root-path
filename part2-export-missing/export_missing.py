@@ -2,7 +2,7 @@
 """
 CLI: export danh sách file không tìm thấy trên remote storage.
 
-Chạy one-shot giống verify_root_path.py — không phải API, không gọi HTTP service.
+CLI one-shot — không phải API, không gọi HTTP service.
 
 Port logic từ:
   - migration-service VbAttachmentMissingExportWriter (Oracle → CSV)
@@ -23,6 +23,10 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+
+_PART_DIR = Path(__file__).resolve().parent
+if str(_PART_DIR) not in sys.path:
+    sys.path.insert(0, str(_PART_DIR))
 
 from config import load_settings
 from db import count_csv_data_rows, write_all_attachments_csv

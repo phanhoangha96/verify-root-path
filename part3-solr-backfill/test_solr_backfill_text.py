@@ -3,6 +3,13 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+_PART_DIR = Path(__file__).resolve().parent
+if str(_PART_DIR) not in sys.path:
+    sys.path.insert(0, str(_PART_DIR))
+
 from solr_backfill_text import build_search_text, normalize_search_value, strip_html
 
 

@@ -18,7 +18,12 @@ import sys
 import time
 from dataclasses import replace
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional
+
+_PART_DIR = Path(__file__).resolve().parent
+if str(_PART_DIR) not in sys.path:
+    sys.path.insert(0, str(_PART_DIR))
 
 from solr_backfill_config import SolrBackfillSettings, load_solr_backfill_settings
 from solr_backfill_db import (

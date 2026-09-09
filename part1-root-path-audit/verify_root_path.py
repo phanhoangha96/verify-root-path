@@ -7,6 +7,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+_PART_DIR = Path(__file__).resolve().parent
+if str(_PART_DIR) not in sys.path:
+    sys.path.insert(0, str(_PART_DIR))
+
 from config import load_settings
 from db import fetch_attachments
 from excel_report import AuditResult, write_excel

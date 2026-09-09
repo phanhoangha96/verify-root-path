@@ -8,6 +8,8 @@ from typing import List
 
 from dotenv import load_dotenv
 
+_DIR = Path(__file__).resolve().parent
+load_dotenv(_DIR / ".env")
 load_dotenv()
 
 
@@ -148,7 +150,7 @@ def load_solr_backfill_settings(
         default_tenant_code=default_tenant,
         batch_size=_int("SOLR_BACKFILL_BATCH_SIZE", 200),
         commit_within_ms=_int("SOLR_COMMIT_WITHIN_MS", 10000),
-        output_dir=Path(os.getenv("OUTPUT_DIR", "./output")),
+        output_dir=Path(os.getenv("OUTPUT_DIR") or str(_DIR / "output")),
         output_file=os.getenv("OUTPUT_FILE", "") or "",
     )
 
@@ -166,6 +168,6 @@ def load_solr_backfill_settings(
         raise SystemExit(
             "Missing Oracle connection for Solr backfill. NEW and LEGACY are two different databases.\n"
             + "\n".join(f"  - {item}" for item in missing)
-            + "\nCopy keys from .env.example into .env"
+            + "\nCopy keys from part3-solr-backfill/.env.example into .env"
         )
     return settings

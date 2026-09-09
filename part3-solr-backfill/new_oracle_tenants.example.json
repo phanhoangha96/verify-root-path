@@ -1,0 +1,10 @@
+[
+  {
+    "name": "tenant-1",
+    "user": "qlvb",
+    "password": "CHANGE_ME",
+    "dsn": "host:1521/ORCLPDB1",
+    "schema": "qlvb",
+    "tenant_code": "example.gov.vn"
+  }
+]

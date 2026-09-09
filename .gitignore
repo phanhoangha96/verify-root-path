@@ -6,3 +6,7 @@ __pycache__/
 .DS_Store
 output/
 *.xlsx
+dist/
+build/
+*.spec
+new_oracle_tenants.json
