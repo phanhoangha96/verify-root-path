@@ -53,8 +53,14 @@ class SolrClient:
             token = b64encode(f"{self.user}:{self.password}".encode("utf-8")).decode("ascii")
             req.add_header("Authorization", f"Basic {token}")
         ctx = ssl.create_default_context()
+        # Bypass HTTP(S)_PROXY / Windows system proxy. Solr is an internal service
+        # (often localhost); corporate Squid intercepts urllib and returns 503 HTML.
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            urllib.request.HTTPSHandler(context=ctx),
+        )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout, context=ctx) as resp:
+            with opener.open(req, timeout=self.timeout) as resp:
                 return resp.read()
         except urllib.error.HTTPError as ex:
             detail = ex.read().decode("utf-8", errors="replace")[:1000]
