@@ -38,7 +38,13 @@ from solr_backfill_db import (
 )
 from solr_backfill_report import BackfillReport, IssueRow, write_reports
 from solr_backfill_solr import SolrClient, add_docs_with_split, clip_solr_doc
-from solr_backfill_text import build_search_text, is_true, normalize_search_value, strip_html
+from solr_backfill_text import (
+    build_search_text,
+    is_true,
+    normalize_place_list,
+    normalize_search_value,
+    strip_html,
+)
 
 
 def _log(message: str) -> None:
@@ -87,7 +93,7 @@ def _solr_doc(row: DocRow, search_text: str) -> Dict:
     if row.object_type == OBJECT_TYPE_INCOMING:
         doc["outsidePublisherName"] = normalize_search_value(row.outside_publisher_name)
     else:
-        doc["otherReceivePlaces"] = normalize_search_value(row.other_receive_places)
+        doc["otherReceivePlaces"] = normalize_place_list(row.other_receive_places)
     return clip_solr_doc(doc, object_id=row.id, log=_log)
 
 
@@ -311,6 +317,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             print(f"Pinging Solr {settings.solr_host}/{settings.solr_core} ...", flush=True)
             solr.ping()
+            solr.ensure_text_fields(log=_log)
 
         if args.source in {"ALL", "NEW"}:
             run_new(
