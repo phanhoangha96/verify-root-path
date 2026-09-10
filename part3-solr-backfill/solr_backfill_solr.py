@@ -151,7 +151,17 @@ class SolrClient:
             with opener.open(req, timeout=self.timeout) as resp:
                 return resp.read()
         except urllib.error.HTTPError as ex:
-            detail = ex.read().decode("utf-8", errors="replace")[:1000]
-            raise RuntimeError(f"Solr HTTP {ex.code} {url}: {detail}") from ex
+            raw = ex.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Solr HTTP {ex.code}: {_solr_error_detail(raw)}") from ex
         except urllib.error.URLError as ex:
             raise RuntimeError(f"Solr connection failed {url}: {ex.reason}") from ex
+
+
+def _solr_error_detail(raw: str) -> str:
+    try:
+        payload = json.loads(raw)
+        err = payload.get("error") or {}
+        msg = err.get("msg") or err.get("trace") or raw
+        return str(msg)[:800]
+    except Exception:
+        return raw[:800]
