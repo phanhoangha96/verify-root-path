@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI: backfill Solr metadata (searchText) for existing incoming/outgoing documents.
+CLI: backfill Solr metadata (searchText + dedicated fields) for existing incoming/outgoing documents.
 
 One-shot, no HTTP API. Reads Oracle (NEW tenant schema + LEGACY schema) and writes
 Solr core eoffice_document. Matching eoffice-business DocMetaSolrServiceImpl.
@@ -38,7 +38,7 @@ from solr_backfill_db import (
 )
 from solr_backfill_report import BackfillReport, IssueRow, write_reports
 from solr_backfill_solr import SolrClient
-from solr_backfill_text import build_search_text, is_true, strip_html
+from solr_backfill_text import build_search_text, is_true, normalize_search_value, strip_html
 
 
 def _search_text(row: DocRow) -> str:
@@ -58,6 +58,7 @@ def _search_text(row: DocRow) -> str:
         row.doc_code,
         row.quote,
         row.publisher_name,
+        row.other_receive_places,
         row.sub_book_number,
         row.book_number,
         row.outgoing_number,
@@ -68,7 +69,7 @@ def _search_text(row: DocRow) -> str:
 
 
 def _solr_doc(row: DocRow, search_text: str) -> Dict:
-    return {
+    doc = {
         "id": f"{row.id}_{row.dept_id}_meta",
         "objectId": row.id,
         "objectType": row.object_type,
@@ -76,7 +77,14 @@ def _solr_doc(row: DocRow, search_text: str) -> Dict:
         "tenantCode": row.tenant_code,
         "indexType": "META",
         "searchText": search_text,
+        "docCode": normalize_search_value(row.doc_code),
+        "quote": normalize_search_value(row.quote),
     }
+    if row.object_type == OBJECT_TYPE_INCOMING:
+        doc["outsidePublisherName"] = normalize_search_value(row.outside_publisher_name)
+    else:
+        doc["otherReceivePlaces"] = normalize_search_value(row.other_receive_places)
+    return {key: value for key, value in doc.items() if value not in (None, "")}
 
 
 def _process_batch(
@@ -250,7 +258,7 @@ def _print_targets(settings: SolrBackfillSettings, source: str) -> None:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Backfill Solr document metadata (searchText) from NEW + LEGACY Oracle."
+        description="Backfill Solr document metadata (searchText + docCode/quote/...) from NEW + LEGACY Oracle."
     )
     parser.add_argument("--source", default="ALL", choices=["ALL", "NEW", "LEGACY"])
     parser.add_argument("--object-type", default="ALL", choices=["ALL", "1", "2"], help="1=incoming, 2=outgoing")

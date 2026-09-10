@@ -2,7 +2,7 @@
 
 Giống fat JAR: một file chạy được, **không cài Python** trên server.
 
-CLI: Oracle NEW/LEGACY → Solr `searchText` → Excel/JSON.
+CLI: Oracle NEW/LEGACY → Solr `searchText` + field riêng (`docCode`, `quote`, ...) → Excel/JSON.
 
 Chạy lại nhiều lần **không nhân bản** (`overwrite=true`, id `{objectId}_{deptId}_meta`).
 

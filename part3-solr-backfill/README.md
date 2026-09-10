@@ -10,7 +10,17 @@ Máy chạy phải **reach được Oracle và Solr** (thường chạy ngay tr�
 
 `eoffice-business` chỉ index **realtime** khi tạo/sửa văn bản, comment, process. Script này backfill dữ liệu cũ.
 
-Chuỗi `searchText` giống Java `DocMetaSolrServiceImpl`: bỏ dấu tiếng Việt, bỏ khoảng trắng / ký tự Solr đặc biệt, uppercase. Incoming gồm `docCode`, `quote`, `publisherName`, `outsidePublisherName`, `bookNumber`, `note`, comment, process note. Outgoing gồm `docCode`, `quote`, `publisherName`, `subBookNumber`, `bookNumber`, `outgoingNumber`, `note`, comment, process note.
+Chuỗi `searchText` giống Java `DocMetaSolrServiceImpl`: bỏ dấu tiếng Việt, bỏ khoảng trắng / ký tự Solr đặc biệt, uppercase.
+
+Incoming `searchText`: `docCode`, `quote`, `publisherName`, `outsidePublisherName`, `bookNumber`, `note`, comment, process note.
+
+Outgoing `searchText`: `docCode`, `quote`, `publisherName`, `otherReceivePlaces`, `subBookNumber`, `bookNumber`, `outgoingNumber`, `note`, comment, process note.
+
+Ngoài `searchText`, script ghi field riêng (cùng kiểu normalize) để search theo form:
+
+- Incoming: `docCode`, `quote`, `outsidePublisherName`
+- Outgoing: `docCode`, `quote`, `otherReceivePlaces`
+
 
 ---
 

@@ -28,6 +28,7 @@ class DocRow:
     outside_publisher_name: Optional[str] = None
     sub_book_number: Optional[str] = None
     outgoing_number: Optional[str] = None
+    other_receive_places: Optional[str] = None
     note: Optional[str] = None
     book_number: Optional[str] = None
     comments: List[str] = field(default_factory=list)
@@ -212,7 +213,7 @@ def iter_new_outgoing(
     sql = f"""
         SELECT * FROM (
             SELECT ID, DOC_CODE, QUOTE, PUBLISHER_NAME, SUB_BOOK_NUMBER,
-                   OUTGOING_NUMBER, NOTE, PUBLISHER_ID, TENANT_CODE
+                   OUTGOING_NUMBER, NOTE, OTHER_RECEIVE_PLACES, PUBLISHER_ID, TENANT_CODE
             FROM {table}
             WHERE NVL(IS_DELETE, 0) = 0
               AND (:last_id IS NULL OR ID > :last_id)
@@ -280,7 +281,7 @@ def iter_legacy_outgoing(
     sql = f"""
         SELECT * FROM (
             SELECT ID, DOC_CODE, QUOTE, PUBLISHER_NAME, SUB_BOOK_NUMBER,
-                   CAST(NULL AS NUMBER) AS OUTGOING_NUMBER, NOTE,
+                   CAST(NULL AS NUMBER) AS OUTGOING_NUMBER, NOTE, OTHER_RECEIVE_PLACES,
                    NVL(PUBLISHER_ID, TDHVP_PUBLISHER_ID) AS PUBLISHER_ID,
                    CAST(NULL AS VARCHAR2(100)) AS TENANT_CODE
             FROM {table}
@@ -373,6 +374,7 @@ def _iter_mapped(
                     sub_book_number,
                     outgoing_number,
                     note,
+                    other_receive_places,
                     dept_id,
                     tenant_code,
                 ) = raw
@@ -388,6 +390,7 @@ def _iter_mapped(
                         publisher_name=_as_str(publisher_name),
                         sub_book_number=_as_str(sub_book_number),
                         outgoing_number=_as_str(outgoing_number),
+                        other_receive_places=_as_str(other_receive_places),
                         note=_as_str(note),
                     )
                 )
