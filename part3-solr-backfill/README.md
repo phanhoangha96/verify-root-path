@@ -173,6 +173,9 @@ Sai `SOLR_HOST`/`SOLR_CORE`, Solr chưa lên, hoặc firewall. Thử:
 curl -sS "http://localhost:8983/solr/<CORE>/admin/ping?wt=json"
 ```
 
+**Outgoing chậm, errors > 0, skipped = 0**  
+Solr reject cả batch (thường field `searchText` / `otherReceivePlaces` vượt 32766 ký tự — Lucene immense term). Script cắt field quá dài trước khi ghi, và khi batch vẫn fail thì **chia đôi** để cô lập doc lỗi (không ghi lại từng doc). Log có `WARN truncated ...` / `WARN Solr batch size=... splitting`. Incoming đã xong thì có thể chạy lại chỉ văn bản đi: `--source NEW --object-type 2` (upsert, không nhân bản).
+
 **scanned=0, errors=0**  
 Query không ra hàng: sai schema, bảng trống, hoặc toàn `IS_DELETE=1`. Kiểm tra:
 

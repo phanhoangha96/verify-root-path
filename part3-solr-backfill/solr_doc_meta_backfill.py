@@ -37,8 +37,12 @@ from solr_backfill_db import (
     iter_new_outgoing,
 )
 from solr_backfill_report import BackfillReport, IssueRow, write_reports
-from solr_backfill_solr import SolrClient
+from solr_backfill_solr import SolrClient, add_docs_with_split, clip_solr_doc
 from solr_backfill_text import build_search_text, is_true, normalize_search_value, strip_html
+
+
+def _log(message: str) -> None:
+    print(message, flush=True)
 
 
 def _search_text(row: DocRow) -> str:
@@ -84,7 +88,27 @@ def _solr_doc(row: DocRow, search_text: str) -> Dict:
         doc["outsidePublisherName"] = normalize_search_value(row.outside_publisher_name)
     else:
         doc["otherReceivePlaces"] = normalize_search_value(row.other_receive_places)
-    return {key: value for key, value in doc.items() if value not in (None, "")}
+    return clip_solr_doc(doc, object_id=row.id, log=_log)
+
+
+def _index_ready(
+    ready_rows: List[DocRow],
+    ready: List[Dict],
+    report: BackfillReport,
+    solr: SolrClient,
+    commit_within_ms: int,
+) -> None:
+    def _add(docs: List[Dict], commit_ms: int) -> None:
+        solr.add_docs(docs, commit_ms)
+        report.solr_batches += 1
+
+    ok, failed = add_docs_with_split(_add, ready, commit_within_ms, log=_log)
+    for index in ok:
+        row = ready_rows[index]
+        report.bump(row.source, row.object_type, "indexed")
+    for index, reason, detail in failed:
+        row = ready_rows[index]
+        report.add_error(IssueRow(row.source, row.object_type, row.id, reason, detail))
 
 
 def _process_batch(
@@ -116,26 +140,7 @@ def _process_batch(
         for row in ready_rows:
             report.bump(row.source, row.object_type, "indexed")
         return
-
-    try:
-        solr.add_docs(ready, commit_within_ms)
-        report.solr_batches += 1
-        for row in ready_rows:
-            report.bump(row.source, row.object_type, "indexed")
-        return
-    except Exception as batch_ex:
-        for row, doc in zip(ready_rows, ready):
-            try:
-                solr.add_docs([doc], commit_within_ms)
-                report.bump(row.source, row.object_type, "indexed")
-            except Exception as ex:
-                report.add_error(
-                    IssueRow(row.source, row.object_type, row.id, "SOLR_WRITE_FAILED", str(ex)[:500])
-                )
-        if not report.error_rows:
-            report.add_error(
-                IssueRow("ALL", 0, "", "SOLR_BATCH_FAILED", str(batch_ex)[:500])
-            )
+    _index_ready(ready_rows, ready, report, solr, commit_within_ms)
 
 
 def _run_stream(
@@ -147,13 +152,15 @@ def _run_stream(
     dry_run: bool,
 ) -> None:
     total = 0
+    started = time.monotonic()
     for page in pages:
         total += len(page)
         _process_batch(page, report, solr, commit_within_ms, dry_run)
+        elapsed = time.monotonic() - started
         print(
             f"  {label}: scanned={total} indexed={report.indexed} "
             f"skipped={report.skipped_missing_dept + report.skipped_empty_search_text} "
-            f"errors={report.errors}",
+            f"errors={report.errors} elapsed={elapsed:.1f}s",
             flush=True,
         )
     if total == 0:

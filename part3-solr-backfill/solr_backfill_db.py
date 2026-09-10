@@ -4,8 +4,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
-import oracledb
-
 from solr_backfill_config import OracleTarget
 
 OBJECT_TYPE_INCOMING = 1
@@ -40,6 +38,8 @@ def qualify(schema: str, table: str) -> str:
 
 
 def connect(target: OracleTarget):
+    import oracledb
+
     return oracledb.connect(user=target.user, password=target.password, dsn=target.dsn)
 
 
