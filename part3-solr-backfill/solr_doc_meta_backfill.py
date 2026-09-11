@@ -89,6 +89,7 @@ def _solr_doc(row: DocRow, search_text: str) -> Dict:
         "searchText": search_text,
         "docCode": normalize_search_value(row.doc_code),
         "quote": normalize_search_value(row.quote),
+        "bookNumber": normalize_search_value(row.book_number),
     }
     if row.object_type == OBJECT_TYPE_INCOMING:
         doc["outsidePublisherName"] = normalize_search_value(row.outside_publisher_name)

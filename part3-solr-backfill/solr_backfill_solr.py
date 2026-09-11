@@ -21,6 +21,7 @@ DEDICATED_TEXT_FIELDS = (
     "quote",
     "outsidePublisherName",
     "otherReceivePlaces",
+    "bookNumber",
 )
 _OPTIONAL_ON_RETRY = ("otherReceivePlaces",)
 
@@ -45,7 +46,7 @@ def clip_solr_doc(doc: Dict, object_id: str = "", log=None) -> Dict:
         if isinstance(value, str):
             if key == "otherReceivePlaces":
                 limit = MAX_SOLR_STORED_FIELD
-            elif key in {"docCode", "quote", "outsidePublisherName"}:
+            elif key in {"docCode", "quote", "outsidePublisherName", "bookNumber"}:
                 limit = MAX_SOLR_DEDICATED_FIELD
             else:
                 limit = MAX_SOLR_TERM_LENGTH

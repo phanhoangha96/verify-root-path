@@ -56,6 +56,7 @@ def test_clip_solr_doc() -> None:
             "searchText": "S" * (MAX_SOLR_TERM_LENGTH + 10),
             "otherReceivePlaces": places,
             "quote": "Q" * (MAX_SOLR_DEDICATED_FIELD + 5),
+            "bookNumber": "123",
             "empty": "",
         },
         object_id="99",
@@ -64,6 +65,7 @@ def test_clip_solr_doc() -> None:
     assert len(doc["searchText"]) == MAX_SOLR_TERM_LENGTH
     assert doc["otherReceivePlaces"] == places
     assert len(doc["quote"]) == MAX_SOLR_DEDICATED_FIELD
+    assert doc["bookNumber"] == "123"
     assert "empty" not in doc
     assert len(warnings) == 2
 

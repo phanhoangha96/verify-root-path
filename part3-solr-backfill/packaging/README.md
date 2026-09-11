@@ -1,6 +1,6 @@
 # Solr metadata backfill (Part 3)
 
-CLI one-shot: đọc văn bản từ Oracle (NEW và/hoặc LEGACY) → ghi `searchText` và field riêng (`docCode`, `quote`, `outsidePublisherName`, `otherReceivePlaces`) lên Solr → xuất Excel/JSON.
+CLI one-shot: đọc văn bản từ Oracle (NEW và/hoặc LEGACY) → ghi `searchText` và field riêng (`docCode`, `quote`, `outsidePublisherName`, `otherReceivePlaces`, `bookNumber`) lên Solr → xuất Excel/JSON.
 
 Không gọi `eoffice-business`. Chạy lại nhiều lần **không nhân bản** (cùng Solr `id` thì ghi đè, `overwrite=true`).
 

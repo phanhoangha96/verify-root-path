@@ -18,8 +18,8 @@ Outgoing `searchText`: `docCode`, `quote`, `publisherName`, `otherReceivePlaces`
 
 Ngoài `searchText`, script ghi field riêng (cùng kiểu normalize) để search theo form:
 
-- Incoming: `docCode`, `quote`, `outsidePublisherName`
-- Outgoing: `docCode`, `quote`, `otherReceivePlaces`
+- Incoming: `docCode`, `quote`, `outsidePublisherName`, `bookNumber`
+- Outgoing: `docCode`, `quote`, `otherReceivePlaces`, `bookNumber`
 
 
 ---
