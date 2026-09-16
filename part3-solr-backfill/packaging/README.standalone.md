@@ -94,7 +94,7 @@ Exit `0` = OK, `1` = có error.
 `chmod +x solr-doc-meta-backfill`
 
 **cannot execute: required file not found / Exec format error**  
-Sai OS/arch. Cần binary Linux amd64 (build lại bằng `python build_solr_backfill_dist.py --linux` trong `part3-solr-backfill`).
+Sai OS/arch. Cần binary Linux amd64 (build lại bằng `python build/build_solr_backfill_dist.py --linux` trong `part3-solr-backfill`).
 
 **Lỗi extract /tmp (onefile)**  
 Server gắn `noexec` trên `/tmp`. Xin lại gói `--onedir`, hoặc:

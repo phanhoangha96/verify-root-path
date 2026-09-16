@@ -152,9 +152,9 @@ Exit code `0` = không error; `1` = có error trong report.
 Từ thư mục này:
 
 ```bash
-python build_solr_backfill_dist.py              # source (.py, cần Python trên server)
-python build_solr_backfill_dist.py --standalone # binary OS hiện tại (không cần Python)
-python build_solr_backfill_dist.py --linux      # binary Linux amd64 qua Docker (PRD)
+python build/build_solr_backfill_dist.py              # source (.py, cần Python trên server)
+python build/build_solr_backfill_dist.py --standalone # binary OS hiện tại (không cần Python)
+python build/build_solr_backfill_dist.py --linux      # binary Linux amd64 qua Docker (PRD)
 ```
 
 Gói ra `dist/solr-doc-meta-backfill/` (+ zip). README trong zip là bản dành cho máy chạy (không chứa hướng dẫn build).

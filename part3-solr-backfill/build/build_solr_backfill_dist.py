@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build dist/solr-doc-meta-backfill (+ zip) for DevOps. Part 3 only.
 
-  python build_solr_backfill_dist.py              # source (.py, cần Python trên server)
-  python build_solr_backfill_dist.py --standalone # binary OS hiện tại (không cần Python)
-  python build_solr_backfill_dist.py --linux      # binary Linux amd64 qua Docker (PRD)
+  python build/build_solr_backfill_dist.py              # source (.py, cần Python trên server)
+  python build/build_solr_backfill_dist.py --standalone # binary OS hiện tại (không cần Python)
+  python build/build_solr_backfill_dist.py --linux      # binary Linux amd64 qua Docker (PRD)
 """
 
 from __future__ import annotations
@@ -17,7 +17,8 @@ import sys
 import zipfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+BUILD_DIR = Path(__file__).resolve().parent
+ROOT = BUILD_DIR.parent
 DIST_ROOT = ROOT / "dist"
 PACKAGE_NAME = "solr-doc-meta-backfill"
 PACKAGE_DIR = DIST_ROOT / PACKAGE_NAME
@@ -163,7 +164,7 @@ def _build_linux_docker(*, onefile: bool) -> None:
         raise SystemExit(
             "Docker is required for --linux (Linux amd64 binary).\n"
             "Install Docker, or build on a Linux amd64 machine:\n"
-            "  python build_solr_backfill_dist.py --standalone"
+            "  python build/build_solr_backfill_dist.py --standalone"
         )
     stage = DIST_ROOT / "_docker_src"
     if stage.exists():
@@ -261,10 +262,13 @@ def main() -> int:
     elif args.standalone:
         print(
             f"Standalone binary for {sys.platform}. "
-            "PRD Linux needs: python build_solr_backfill_dist.py --linux"
+            "PRD Linux needs: python build/build_solr_backfill_dist.py --linux"
         )
     else:
-        print("Source package (Python required). For no-Python PRD: python build_solr_backfill_dist.py --linux")
+        print(
+            "Source package (Python required). For no-Python PRD: "
+            "python build/build_solr_backfill_dist.py --linux"
+        )
     return 0
 
 
