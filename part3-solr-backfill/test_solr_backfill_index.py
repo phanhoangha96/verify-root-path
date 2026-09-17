@@ -9,6 +9,7 @@ _PART_DIR = Path(__file__).resolve().parent
 if str(_PART_DIR) not in sys.path:
     sys.path.insert(0, str(_PART_DIR))
 
+from solr_backfill_db import OBJECT_TYPE_INCOMING, OBJECT_TYPE_OUTGOING, DocRow
 from solr_backfill_solr import (
     MAX_SOLR_DEDICATED_FIELD,
     MAX_SOLR_TERM_LENGTH,
@@ -18,6 +19,8 @@ from solr_backfill_solr import (
     compact_solr_msg,
     is_solr_unreachable,
 )
+from solr_backfill_text import build_search_text, strip_html
+from solr_doc_meta_backfill import _search_text, _solr_doc
 
 
 class FakeSolr:
@@ -35,6 +38,43 @@ class FakeSolr:
             if str(doc["objectId"]) in self.bad_ids:
                 raise RuntimeError(f"Solr HTTP 400 immense term objectId={doc['objectId']}")
         self.indexed_ids.extend(str(doc["objectId"]) for doc in docs)
+
+
+def test_solr_doc_instruction_and_comment() -> None:
+    row = DocRow(
+        id="doc1",
+        source="NEW",
+        object_type=OBJECT_TYPE_INCOMING,
+        dept_id="dept1",
+        tenant_code="t1",
+        doc_code="CV-001",
+        quote="Trích yếu",
+        book_number="10",
+        comments=["<p>Ý kiến</p>"],
+        process_notes=["Chỉ đạo gấp"],
+    )
+    search_text = _search_text(row)
+    doc = _solr_doc(row, search_text)
+    assert doc["instruction"] == build_search_text("Chỉ đạo gấp")
+    assert doc["comment"] == build_search_text(strip_html("<p>Ý kiến</p>"))
+    assert "CHIDAOGAP" in doc["searchText"]
+    assert "YKIEN" in doc["searchText"]
+    assert doc["docCode"] == "CV001"
+    assert doc["bookNumber"] == "10"
+
+    outgoing = DocRow(
+        id="out1",
+        source="NEW",
+        object_type=OBJECT_TYPE_OUTGOING,
+        dept_id="dept1",
+        tenant_code="t1",
+        doc_code="CV-002",
+        comments=[],
+        process_notes=[],
+    )
+    out_doc = _solr_doc(outgoing, _search_text(outgoing))
+    assert "instruction" not in out_doc
+    assert "comment" not in out_doc
 
 
 def test_clip_solr_term() -> None:
@@ -133,6 +173,7 @@ def test_is_solr_unreachable() -> None:
 
 
 if __name__ == "__main__":
+    test_solr_doc_instruction_and_comment()
     test_clip_solr_term()
     test_clip_solr_doc()
     test_binary_split_isolates_bad_docs()

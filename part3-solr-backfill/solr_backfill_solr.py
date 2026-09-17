@@ -22,6 +22,8 @@ DEDICATED_TEXT_FIELDS = (
     "outsidePublisherName",
     "otherReceivePlaces",
     "bookNumber",
+    "instruction",
+    "comment",
 )
 _OPTIONAL_ON_RETRY = ("otherReceivePlaces",)
 

@@ -16,10 +16,12 @@ Incoming `searchText`: `docCode`, `quote`, `publisherName`, `outsidePublisherNam
 
 Outgoing `searchText`: `docCode`, `quote`, `publisherName`, `otherReceivePlaces`, `subBookNumber`, `bookNumber`, `outgoingNumber`, `note`, comment, process note.
 
-Ngoài `searchText`, script ghi field riêng (cùng kiểu normalize) để search theo form:
+Ngoài `searchText`, script ghi field riêng (cùng kiểu normalize) để search theo form và xếp hạng keyword:
 
-- Incoming: `docCode`, `quote`, `outsidePublisherName`, `bookNumber`
-- Outgoing: `docCode`, `quote`, `otherReceivePlaces`, `bookNumber`
+- Incoming: `docCode`, `quote`, `outsidePublisherName`, `bookNumber`, `instruction` (process note / chỉ đạo), `comment`
+- Outgoing: `docCode`, `quote`, `otherReceivePlaces`, `bookNumber`, `instruction`, `comment`
+
+`instruction` và `comment` tách riêng để keyword ranking: số ký hiệu → số đến → trích yếu → chỉ đạo → comment/nội dung file.
 
 
 ---

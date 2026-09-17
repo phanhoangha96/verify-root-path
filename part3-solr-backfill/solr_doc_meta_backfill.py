@@ -52,7 +52,7 @@ def _log(message: str) -> None:
 
 
 def _search_text(row: DocRow) -> str:
-    comments = [strip_html(item) for item in row.comments]
+    comments = _comment_values(row)
     if row.object_type == OBJECT_TYPE_INCOMING:
         return build_search_text(
             row.doc_code,
@@ -78,7 +78,12 @@ def _search_text(row: DocRow) -> str:
     )
 
 
+def _comment_values(row: DocRow) -> List[str]:
+    return [strip_html(item) for item in row.comments]
+
+
 def _solr_doc(row: DocRow, search_text: str) -> Dict:
+    comments = _comment_values(row)
     doc = {
         "id": f"{row.id}_{row.dept_id}_meta",
         "objectId": row.id,
@@ -90,6 +95,8 @@ def _solr_doc(row: DocRow, search_text: str) -> Dict:
         "docCode": normalize_search_value(row.doc_code),
         "quote": normalize_search_value(row.quote),
         "bookNumber": normalize_search_value(row.book_number),
+        "instruction": build_search_text(*row.process_notes),
+        "comment": build_search_text(*comments),
     }
     if row.object_type == OBJECT_TYPE_INCOMING:
         doc["outsidePublisherName"] = normalize_search_value(row.outside_publisher_name)
