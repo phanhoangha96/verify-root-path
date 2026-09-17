@@ -3,7 +3,7 @@
 CLI: backfill Solr FILE documents (fileContent) for existing incoming/outgoing docs.
 
 Matches eoffice-solr DocServiceImpl.addDocument:
-  download/read file → Apache Tika extract → Solr add
+  download/read file → Tika extract → TextUtils.removeVietnameseAccents → Solr add
   fields: id, objectId, objectType, fileContent, fileServiceId, deptId, tenantCode
 
 Does not call eoffice-business. Re-runs skip existing (fileServiceId + deptId)
@@ -414,7 +414,7 @@ def _make_extract_fn(settings: SolrFileBackfillSettings) -> ExtractFn:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Backfill Solr FILE documents (fileContent via Tika) from NEW + LEGACY Oracle."
+        description="Backfill Solr FILE documents (Tika + remove Vietnamese accents) from NEW + LEGACY Oracle."
     )
     parser.add_argument("--source", default="ALL", choices=["ALL", "NEW", "LEGACY"])
     parser.add_argument("--object-type", default="ALL", choices=["ALL", "1", "2"], help="1=incoming, 2=outgoing")

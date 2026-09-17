@@ -1,10 +1,10 @@
 # Part 4 — Solr file content backfill
 
-CLI one-shot: đọc văn bản từ Oracle (NEW và/hoặc LEGACY) → lấy file chính (`VB_ATTACHMENT`) → extract text bằng Apache Tika → ghi Solr `fileContent` → xuất Excel/JSON.
+CLI one-shot: đọc văn bản từ Oracle (NEW và/hoặc LEGACY) → lấy file chính (`VB_ATTACHMENT`) → extract text bằng Apache Tika → bỏ dấu tiếng Việt → ghi Solr `fileContent` → xuất Excel/JSON.
 
 Không gọi `eoffice-business`. Khớp luồng realtime:
 
-`IncomingDocController.indexFileUsingSolr` → `SolrService` → RabbitMQ → `eoffice-solr DocServiceImpl.addDocument` (tải file, Tika, `solrClient.add`).
+`IncomingDocController.indexFileUsingSolr` → `SolrService` → RabbitMQ → `eoffice-solr DocServiceImpl.addDocument` (tải file, Tika, `TextUtils.removeVietnameseAccents`, `solrClient.add`).
 
 Chạy lại **không nhân bản** cùng `fileServiceId` + `deptId` (bỏ qua, giống `POST /document/add`). Solr id deterministic: `{fileServiceId}_{deptId}_file` (`overwrite=true`). `--force` ghi đè id đó.
 
@@ -16,7 +16,7 @@ Solr FILE doc (không có `indexType=META`):
 
 - `id` = `{fileServiceId}_{deptId}_file`
 - `objectId`, `objectType` (1 incoming / 2 outgoing)
-- `fileContent` (Tika raw text)
+- `fileContent` (Tika text, rồi `TextUtils.removeVietnameseAccents`: NFD, bỏ dấu, `đ/Đ` → `d/D`; giữ hoa/thường và dấu câu)
 - `fileServiceId`, `deptId`, `tenantCode`
 
 Incoming: file chính `OBJECT_TYPE=1`, index theo `TO_DEPT_ID` + `DEPT_RECEIVER_ID` trên `VB_INCOMING_PROCESS`.
@@ -84,7 +84,7 @@ NEW và LEGACY nằm trên **hai Oracle khác nhau**.
 - Chạy trên server Solr: `SOLR_HOST=http://localhost:8983/solr`
 - `SOLR_CORE` phải đúng core môi trường
 - `SOLR_TENANT_CODE` / `NEW_ORACLE_TENANT_CODE`: header `TenantCode` khi tải file-service
-- `TIKA_WRITE_LIMIT=100000` khớp Java `BodyContentHandler` mặc định
+- `TIKA_WRITE_LIMIT=100000` khớp Java `BodyContentHandler` mặc định (cắt trước khi bỏ dấu)
 - Nhiều tenant NEW: `NEW_ORACLE_TENANTS_FILE=./new_oracle_tenants.json`
 
 `SOLR_BACKFILL_BATCH_SIZE` mặc định **20** (mỗi doc phải tải file + Tika, nhỏ hơn part 3).
@@ -161,6 +161,7 @@ Exit code `0` = không error; `1` = có error trong report.
 - Không gọi eoffice-solr HTTP; ghi Solr trực tiếp như part 3.
 - Java realtime dùng UUID cho `id`. Script dùng `{fileServiceId}_{deptId}_file`. Doc UUID cũ vẫn được nhận diện qua query `fileServiceId` + `deptId` và **skip** (trừ `--force`).
 - `--force` ghi đè id deterministic; không xóa doc UUID cũ do Java tạo.
+- `fileContent` khớp Java: Tika `BodyContentHandler` rồi `TextUtils.removeVietnameseAccents` (không uppercase, không xóa khoảng trắng như `searchText` part 3). Search realtime cũng bỏ dấu query nên phải index bản không dấu.
 - Cùng một file index nhiều dept: Tika chỉ chạy **một lần** (cache theo `fileServiceId`).
 - Doc Oracle `IS_DELETE=1` không bị xóa khỏi Solr.
 - PDF scan (không text layer): Tika ra rỗng → skip `EMPTY_FILE_CONTENT` (không OCR trừ khi Tika/Tesseract được cài trên máy).

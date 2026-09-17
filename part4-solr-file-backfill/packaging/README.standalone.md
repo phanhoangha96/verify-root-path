@@ -2,7 +2,7 @@
 
 Giống fat JAR: một file chạy được, **không cài Python** trên server.
 
-CLI: Oracle NEW/LEGACY → tải file (file-service hoặc disk) → Apache Tika → Solr `fileContent` → Excel/JSON.
+CLI: Oracle NEW/LEGACY → tải file (file-service hoặc disk) → Apache Tika → bỏ dấu tiếng Việt → Solr `fileContent` → Excel/JSON.
 
 Chạy lại **không nhân bản** cùng `fileServiceId` + `deptId` (trừ `--force`). Solr id `{fileServiceId}_{deptId}_file`.
 

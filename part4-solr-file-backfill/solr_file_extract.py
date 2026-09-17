@@ -1,10 +1,16 @@
-"""Extract file text the same way as eoffice-solr TikaAnalysis.extractContentUsingParser."""
+"""Extract file text the same way as eoffice-solr DocServiceImpl.addDocument.
+
+Java:
+  String content = TextUtils.removeVietnameseAccents(
+      TikaAnalysis.extractContentUsingParser(fileInputStream));
+"""
 
 from __future__ import annotations
 
 import os
 import subprocess
 import tempfile
+import unicodedata
 from pathlib import Path
 
 # Java BodyContentHandler default write limit (Tika 1.x–3.x).
@@ -21,6 +27,28 @@ def clip_content(text: str, write_limit: int) -> str:
     return text
 
 
+def remove_vietnamese_accents(value: str) -> str:
+    """Match eoffice-solr TextUtils.removeVietnameseAccents.
+
+    NFD, drop Unicode non-spacing marks (Mn), map đ/Đ → d/D.
+    Preserves case, whitespace, and punctuation (unlike part3 searchText).
+    """
+    if value is None or value == "":
+        return value
+    nfd = unicodedata.normalize("NFD", value)
+    out = []
+    for ch in nfd:
+        if unicodedata.category(ch) == "Mn":
+            continue
+        if ch == "đ":
+            out.append("d")
+        elif ch == "Đ":
+            out.append("D")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def extract_content(
     data: bytes,
     filename: str = "",
@@ -35,7 +63,7 @@ def extract_content(
         text = _extract_with_jar(data, filename, jar)
     else:
         text = _extract_with_tika_python(data, filename)
-    return clip_content(text, write_limit)
+    return remove_vietnamese_accents(clip_content(text, write_limit))
 
 
 def _extract_with_jar(data: bytes, filename: str, jar: str) -> str:

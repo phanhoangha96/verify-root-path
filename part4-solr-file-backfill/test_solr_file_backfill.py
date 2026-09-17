@@ -12,7 +12,7 @@ if str(_PART_DIR) not in sys.path:
 from solr_doc_file_backfill import ExtractCache, _solr_doc, file_key, process_batch, solr_file_service_id
 from solr_file_db import AttachmentRow, FileIndexRow, pick_attachment, solr_file_id, unique_dept_ids
 from solr_file_download import FileLoadError, disk_candidates, normalize_relative_path
-from solr_file_extract import clip_content
+from solr_file_extract import clip_content, remove_vietnamese_accents
 from solr_file_report import BackfillReport, IssueRow
 from solr_file_solr import add_docs_with_split, escape_solr_query, is_solr_unreachable
 
@@ -64,6 +64,24 @@ def test_disk_candidates() -> None:
 def test_clip_content() -> None:
     assert clip_content("abc", 10) == "abc"
     assert clip_content("abcdefghij", 4) == "abcd"
+
+
+def test_remove_vietnamese_accents() -> None:
+    assert remove_vietnamese_accents("") == ""
+    assert remove_vietnamese_accents("hello") == "hello"
+    assert remove_vietnamese_accents("Công văn số 123") == "Cong van so 123"
+    assert remove_vietnamese_accents("Độc lập - Tự do") == "Doc lap - Tu do"
+    assert remove_vietnamese_accents("đường phố") == "duong pho"
+    assert remove_vietnamese_accents("ỦY BAN NHÂN DÂN") == "UY BAN NHAN DAN"
+    assert remove_vietnamese_accents("việc xử lý") == "viec xu ly"
+
+
+def test_clip_then_remove_accents_matches_java_order() -> None:
+    # Java: BodyContentHandler limit, then TextUtils.removeVietnameseAccents.
+    raw = "Công văn " + ("ế" * 20)
+    clipped = clip_content(raw, 8)
+    assert clipped == "Công văn"
+    assert remove_vietnamese_accents(clipped) == "Cong van"
 
 
 def test_solr_doc_shape() -> None:
@@ -248,6 +266,8 @@ if __name__ == "__main__":
     test_unique_dept_ids()
     test_disk_candidates()
     test_clip_content()
+    test_remove_vietnamese_accents()
+    test_clip_then_remove_accents_matches_java_order()
     test_solr_doc_shape()
     test_file_key_and_fallback_id()
     test_process_batch_dry_run_indexes_per_dept()
