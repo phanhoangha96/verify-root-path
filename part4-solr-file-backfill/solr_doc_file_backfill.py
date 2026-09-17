@@ -45,7 +45,14 @@ from solr_file_db import (
     unique_dept_ids,
 )
 from solr_file_download import FileBytesLoader, FileLoadError
-from solr_file_extract import TikaExtractError, extract_content
+from solr_file_extract import (
+    TIKA_BACKEND_SERVER,
+    TikaExtractError,
+    describe_tika_backend,
+    extract_content,
+    ping_tika_server,
+    resolve_tika_backend,
+)
 from solr_file_report import BackfillReport, IssueRow, write_reports
 from solr_file_solr import SolrClient, add_docs_with_split
 
@@ -398,6 +405,7 @@ def _print_targets(settings: SolrFileBackfillSettings, source: str) -> None:
         f"File source={settings.file_source} download={settings.file_service_download_url}",
         flush=True,
     )
+    print(describe_tika_backend(settings.tika_server_url, settings.tika_app_jar), flush=True)
 
 
 def _make_extract_fn(settings: SolrFileBackfillSettings) -> ExtractFn:
@@ -405,7 +413,9 @@ def _make_extract_fn(settings: SolrFileBackfillSettings) -> ExtractFn:
         return extract_content(
             data,
             filename,
+            tika_server_url=settings.tika_server_url,
             tika_app_jar=settings.tika_app_jar,
+            tika_server_timeout=settings.tika_server_timeout,
             write_limit=settings.tika_write_limit,
         )
 
@@ -431,6 +441,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         choices=["auto", "file-service", "disk"],
         help="Override FILE_SOURCE",
     )
+    parser.add_argument(
+        "--tika-server",
+        default="",
+        help="Override TIKA_SERVER_URL (Apache Tika Server HTTP, e.g. http://tika-host:9998)",
+    )
     args = parser.parse_args(argv)
 
     require_legacy = args.source in {"ALL", "LEGACY"}
@@ -444,6 +459,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         settings = replace(settings, solr_host=args.solr_host.rstrip("/"))
     if args.file_source:
         settings = replace(settings, file_source=args.file_source)
+    if args.tika_server:
+        settings = replace(settings, tika_server_url=args.tika_server.strip().rstrip("/"))
     _print_targets(settings, args.source)
     batch_size = args.batch_size or settings.batch_size
     object_types = _wanted(args.object_type)
@@ -476,6 +493,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Pinging Solr {settings.solr_host}/{settings.solr_core} ...", flush=True)
             solr.ping()
             solr.ensure_text_fields(log=_log)
+            if resolve_tika_backend(settings.tika_server_url, settings.tika_app_jar) == TIKA_BACKEND_SERVER:
+                print(f"Pinging Tika {settings.tika_server_url} ...", flush=True)
+                status = ping_tika_server(settings.tika_server_url, timeout=min(30, settings.tika_server_timeout))
+                print(f"  tika-server ok: {status}", flush=True)
             loader = FileBytesLoader(
                 settings.file_source,
                 settings.file_service_download_url,

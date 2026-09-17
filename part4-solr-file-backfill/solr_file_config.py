@@ -63,6 +63,8 @@ class SolrFileBackfillSettings:
     file_service_download_url: str
     file_service_timeout: int
     file_storage_roots: List[str]
+    tika_server_url: str
+    tika_server_timeout: int
     tika_app_jar: str
     tika_write_limit: int
     output_dir: Path
@@ -180,6 +182,8 @@ def load_solr_file_backfill_settings(
         file_service_download_url=download_url,
         file_service_timeout=_int("FILE_SERVICE_TIMEOUT_SECONDS", 120),
         file_storage_roots=_csv_paths(os.getenv("FILE_STORAGE_ROOTS", "") or ""),
+        tika_server_url=_env("TIKA_SERVER_URL").rstrip("/"),
+        tika_server_timeout=_int("TIKA_SERVER_TIMEOUT_SECONDS", 120),
         tika_app_jar=_env("TIKA_APP_JAR"),
         tika_write_limit=_int("TIKA_WRITE_LIMIT", 100000),
         output_dir=Path(os.getenv("OUTPUT_DIR") or str(_DIR / "output")),

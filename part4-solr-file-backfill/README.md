@@ -8,7 +8,7 @@ Không gọi `eoffice-business`. Khớp luồng realtime:
 
 Chạy lại **không nhân bản** cùng `fileServiceId` + `deptId` (bỏ qua, giống `POST /document/add`). Solr id deterministic: `{fileServiceId}_{deptId}_file` (`overwrite=true`). `--force` ghi đè id đó.
 
-Máy chạy phải reach **Oracle + Solr**, và **file-service** (NEW) hoặc **đĩa file** (LEGACY).
+Máy chạy phải reach **Oracle + Solr**, và **file-service** (NEW) hoặc **đĩa file** (LEGACY). Tika: HTTP `TIKA_SERVER_URL` (máy riêng) hoặc Java local.
 
 `eoffice-business` chỉ index FILE khi tạo/sửa văn bản có file. Script này backfill dữ liệu cũ.
 
@@ -28,8 +28,11 @@ Outgoing: file chính `OBJECT_TYPE=2`, index theo `PUBLISHER_ID` + `DEPT_RECEIVE
 ## 1. Yêu cầu
 
 - Python 3.9+ (`python3 --version` / `python --version`)
-- Java (Tika). Package `tika` tự chạy tika-server lần đầu; hoặc đặt `TIKA_APP_JAR` trỏ `tika-app.jar`
-- Network: Oracle + Solr HTTP + file-service (nếu `FILE_SOURCE=file-service` / `auto`)
+- Tika — **một** trong ba:
+  1. `TIKA_SERVER_URL` (PRD: tika-server HTTP trên máy riêng, máy backfill **không** cần Java)
+  2. `TIKA_APP_JAR` trỏ `tika-app.jar` (cần Java local)
+  3. Package Python `tika` tự chạy tika-server local (cần Java; lần đầu tải jar)
+- Network: Oracle + Solr HTTP + file-service (nếu `FILE_SOURCE=file-service` / `auto`) + Tika HTTP nếu dùng server riêng
 - `oracledb` thin mode: không cần Oracle Instant Client (DB 12.1+)
 
 ---
@@ -84,6 +87,7 @@ NEW và LEGACY nằm trên **hai Oracle khác nhau**.
 - Chạy trên server Solr: `SOLR_HOST=http://localhost:8983/solr`
 - `SOLR_CORE` phải đúng core môi trường
 - `SOLR_TENANT_CODE` / `NEW_ORACLE_TENANT_CODE`: header `TenantCode` khi tải file-service
+- `TIKA_SERVER_URL=http://tika-host:9998` — ưu tiên cao nhất; CLI `--tika-server` ghi đè
 - `TIKA_WRITE_LIMIT=100000` khớp Java `BodyContentHandler` mặc định (cắt trước khi bỏ dấu)
 - Nhiều tenant NEW: `NEW_ORACLE_TENANTS_FILE=./new_oracle_tenants.json`
 
@@ -122,6 +126,12 @@ Ghi đè FILE đã có (`fileServiceId` + `deptId`):
 
 ```bash
 python solr_doc_file_backfill.py --source NEW --force
+```
+
+Dùng Tika server riêng (ghi đè `.env`):
+
+```bash
+python solr_doc_file_backfill.py --source NEW --tika-server http://tika-host:9998
 ```
 
 Job lớn (Linux, chạy nền):
@@ -185,8 +195,15 @@ curl -sS -D - -o /tmp/f.bin \
 **MISSING_FILE_SERVICE_ID**  
 Attachment LEGACY chưa có id file-service. Chạy `--file-source disk` trên máy mount được `FILE_STORAGE_ROOTS`.
 
-**TIKA_FAILED / tika server**  
-Cần Java. Lần đầu `tika` tải jar. Hoặc:
+**TIKA_FAILED / tika-server**  
+Nếu dùng máy Tika riêng: sai `TIKA_SERVER_URL`, firewall, hoặc tika-server chưa lên. Thử:
+
+```bash
+curl -sS "http://tika-host:9998/tika"
+curl -sS -T /path/to/file.pdf -H "Accept: text/plain" "http://tika-host:9998/tika"
+```
+
+Local (không có `TIKA_SERVER_URL`): cần Java. Lần đầu `tika` tải jar. Hoặc:
 
 ```bash
 # Tika 3.x (gần eoffice-solr 3.3.2)
@@ -221,4 +238,4 @@ python build/build_solr_file_backfill_dist.py --linux      # binary Linux amd64 
 
 Gói ra `dist/solr-doc-file-backfill/` (+ zip). README trong zip là bản dành cho máy chạy (không chứa hướng dẫn build).
 
-Binary **không kèm Java**. Server chạy Tika phải có `java` trên PATH, hoặc `TIKA_APP_JAR`.
+Binary **không kèm Java**. PRD với `TIKA_SERVER_URL`: máy backfill không cần Java. Local jar / package `tika`: cần `java` trên PATH hoặc `TIKA_APP_JAR`.
