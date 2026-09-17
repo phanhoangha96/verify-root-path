@@ -98,6 +98,8 @@ def _solr_doc(row: DocRow, search_text: str) -> Dict:
         "instruction": build_search_text(*row.process_notes),
         "comment": build_search_text(*comments),
     }
+    if row.priority_order is not None:
+        doc["priorityOrder"] = int(row.priority_order)
     if row.object_type == OBJECT_TYPE_INCOMING:
         doc["outsidePublisherName"] = normalize_search_value(row.outside_publisher_name)
     else:

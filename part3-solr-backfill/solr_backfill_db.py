@@ -31,6 +31,8 @@ class DocRow:
     book_number: Optional[str] = None
     comments: List[str] = field(default_factory=list)
     process_notes: List[str] = field(default_factory=list)
+    priority_id: Optional[str] = None
+    priority_order: Optional[int] = None
 
 
 def qualify(schema: str, table: str) -> str:
@@ -75,6 +77,28 @@ def _fetch_map(
                 continue
             grouped[str(object_id)].append(text)
     return grouped
+
+
+def _as_int(value) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fetch_int_map(conn, sql: str, binds: Dict) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    with conn.cursor() as cur:
+        cur.arraysize = 1000
+        cur.execute(sql, binds)
+        for key, value in cur:
+            order = _as_int(value)
+            if key is None or order is None:
+                continue
+            out[str(key)] = order
+    return out
 
 
 def _fetch_first_map(conn, sql: str, binds: Dict) -> Dict[str, str]:
@@ -163,6 +187,24 @@ def _attach_related(
     for row in rows:
         row.book_number = book_map.get(row.id)
 
+    priority_ids: List[str] = []
+    seen_priority_ids = set()
+    for row in rows:
+        if row.priority_id and row.priority_id not in seen_priority_ids:
+            seen_priority_ids.add(row.priority_id)
+            priority_ids.append(row.priority_id)
+    if priority_ids:
+        p_sql, p_binds = _in_clause("pr", priority_ids)
+        category_sql = f"""
+            SELECT ID, ORDER_
+            FROM {qualify(schema, "CATEGORY")}
+            WHERE ID IN ({p_sql})
+        """
+        order_map = _fetch_int_map(conn, category_sql, p_binds)
+        for row in rows:
+            if row.priority_id:
+                row.priority_order = order_map.get(row.priority_id)
+
 
 def iter_new_incoming(
     conn,
@@ -176,7 +218,7 @@ def iter_new_incoming(
     sql = f"""
         SELECT * FROM (
             SELECT ID, DOC_CODE, QUOTE, PUBLISHER_NAME, OUTSIDE_PUBLISHER_NAME,
-                   NOTE, TO_DEPT_ID, TENANT_CODE
+                   NOTE, TO_DEPT_ID, TENANT_CODE, PRIORITY_ID
             FROM {table}
             WHERE NVL(IS_DELETE, 0) = 0
               AND (:last_id IS NULL OR ID > :last_id)
@@ -213,7 +255,8 @@ def iter_new_outgoing(
     sql = f"""
         SELECT * FROM (
             SELECT ID, DOC_CODE, QUOTE, PUBLISHER_NAME, SUB_BOOK_NUMBER,
-                   OUTGOING_NUMBER, NOTE, OTHER_RECEIVE_PLACES, PUBLISHER_ID, TENANT_CODE
+                   OUTGOING_NUMBER, NOTE, OTHER_RECEIVE_PLACES, PUBLISHER_ID, TENANT_CODE,
+                   PRIORITY_ID
             FROM {table}
             WHERE NVL(IS_DELETE, 0) = 0
               AND (:last_id IS NULL OR ID > :last_id)
@@ -248,7 +291,8 @@ def iter_legacy_incoming(
     sql = f"""
         SELECT * FROM (
             SELECT ID, DOC_CODE, QUOTE, TDHVP_PUBLISHER_NAME, OUTSIDE_PUBLISHER_NAME,
-                   NOTE, EOFFICE_TO_DEPT_ID, CAST(NULL AS VARCHAR2(100)) AS TENANT_CODE
+                   NOTE, EOFFICE_TO_DEPT_ID, CAST(NULL AS VARCHAR2(100)) AS TENANT_CODE,
+                   PRIORITY_ID
             FROM {table}
             WHERE NVL(IS_DELETE, 0) = 0
               AND (:last_id IS NULL OR ID > :last_id)
@@ -283,7 +327,7 @@ def iter_legacy_outgoing(
             SELECT ID, DOC_CODE, QUOTE, PUBLISHER_NAME, SUB_BOOK_NUMBER,
                    CAST(NULL AS NUMBER) AS OUTGOING_NUMBER, NOTE, OTHER_RECEIVE_PLACES,
                    NVL(PUBLISHER_ID, TDHVP_PUBLISHER_ID) AS PUBLISHER_ID,
-                   CAST(NULL AS VARCHAR2(100)) AS TENANT_CODE
+                   CAST(NULL AS VARCHAR2(100)) AS TENANT_CODE, PRIORITY_ID
             FROM {table}
             WHERE NVL(IS_DELETE, 0) = 0
               AND (:last_id IS NULL OR ID > :last_id)
@@ -350,6 +394,7 @@ def _iter_mapped(
                     note,
                     dept_id,
                     tenant_code,
+                    priority_id,
                 ) = raw
                 docs.append(
                     DocRow(
@@ -363,6 +408,7 @@ def _iter_mapped(
                         publisher_name=_as_str(publisher_name),
                         outside_publisher_name=_as_str(outside_publisher_name),
                         note=_as_str(note),
+                        priority_id=_as_str(priority_id),
                     )
                 )
             else:
@@ -377,6 +423,7 @@ def _iter_mapped(
                     other_receive_places,
                     dept_id,
                     tenant_code,
+                    priority_id,
                 ) = raw
                 docs.append(
                     DocRow(
@@ -392,6 +439,7 @@ def _iter_mapped(
                         outgoing_number=_as_str(outgoing_number),
                         other_receive_places=_as_str(other_receive_places),
                         note=_as_str(note),
+                        priority_id=_as_str(priority_id),
                     )
                 )
         _attach_related(

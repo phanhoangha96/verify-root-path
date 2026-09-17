@@ -18,10 +18,10 @@ Outgoing `searchText`: `docCode`, `quote`, `publisherName`, `otherReceivePlaces`
 
 Ngoài `searchText`, script ghi field riêng (cùng kiểu normalize) để search theo form và xếp hạng keyword:
 
-- Incoming: `docCode`, `quote`, `outsidePublisherName`, `bookNumber`, `instruction` (process note / chỉ đạo), `comment`
-- Outgoing: `docCode`, `quote`, `otherReceivePlaces`, `bookNumber`, `instruction`, `comment`
+- Incoming: `docCode`, `quote`, `outsidePublisherName`, `bookNumber`, `instruction` (process note / chỉ đạo), `comment`, `priorityOrder`
+- Outgoing: `docCode`, `quote`, `otherReceivePlaces`, `bookNumber`, `instruction`, `comment`, `priorityOrder`
 
-`instruction` và `comment` tách riêng để keyword ranking: số ký hiệu → số đến → trích yếu → chỉ đạo → comment/nội dung file.
+`priorityOrder` là `CATEGORY.ORDER_` theo `PRIORITY_ID`. Keyword ranking: số ký hiệu → số đến → trích yếu → độ khẩn (`ORDER_` cao lên trước) → chỉ đạo → comment/nội dung file.
 
 
 ---

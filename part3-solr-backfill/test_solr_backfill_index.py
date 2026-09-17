@@ -52,6 +52,8 @@ def test_solr_doc_instruction_and_comment() -> None:
         book_number="10",
         comments=["<p>Ý kiến</p>"],
         process_notes=["Chỉ đạo gấp"],
+        priority_id="pri1",
+        priority_order=7,
     )
     search_text = _search_text(row)
     doc = _solr_doc(row, search_text)
@@ -61,6 +63,7 @@ def test_solr_doc_instruction_and_comment() -> None:
     assert "YKIEN" in doc["searchText"]
     assert doc["docCode"] == "CV001"
     assert doc["bookNumber"] == "10"
+    assert doc["priorityOrder"] == 7
 
     outgoing = DocRow(
         id="out1",
@@ -75,6 +78,7 @@ def test_solr_doc_instruction_and_comment() -> None:
     out_doc = _solr_doc(outgoing, _search_text(outgoing))
     assert "instruction" not in out_doc
     assert "comment" not in out_doc
+    assert "priorityOrder" not in out_doc
 
 
 def test_clip_solr_term() -> None:
