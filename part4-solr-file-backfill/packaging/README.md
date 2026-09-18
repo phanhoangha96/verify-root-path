@@ -1,6 +1,6 @@
 # Solr file content backfill (Part 4)
 
-CLI one-shot: đọc văn bản từ Oracle (NEW và/hoặc LEGACY) → lấy file chính (`VB_ATTACHMENT`) → Apache Tika → bỏ dấu tiếng Việt → ghi Solr `fileContent` → Excel/JSON.
+CLI one-shot: đọc văn bản từ Oracle (NEW và/hoặc LEGACY) → lấy file chính (`VB_ATTACHMENT`) và file `VB_DOC_RELATION` → Apache Tika → bỏ dấu tiếng Việt → ghi Solr `fileContent` → Excel/JSON.
 
 Không gọi `eoffice-business`. Chạy lại **không nhân bản** cùng `fileServiceId` + `deptId` (bỏ qua, trừ `--force`). Solr id: `{fileServiceId}_{deptId}_file`.
 
@@ -112,7 +112,7 @@ tail -f file-backfill.log
 - `output/solr_doc_file_backfill_YYYYMMDD_HHMMSS.xlsx`
 - `output/solr_doc_file_backfill_YYYYMMDD_HHMMSS.json`
 
-`scanned` = số văn bản Oracle. `indexed` = số Solr FILE doc (một văn bản × nhiều dept).
+`scanned` = số file Oracle (file chính + file `VB_DOC_RELATION`). `indexed` = số Solr FILE doc (một file × nhiều dept).
 
 Exit code `0` = không error; `1` = có error trong report.
 
@@ -121,6 +121,7 @@ Exit code `0` = không error; `1` = có error trong report.
 ## 6. Lưu ý
 
 - Chạy lại skip `fileServiceId` + `deptId` đã có (trừ `--force`).
+- File văn bản liên quan: `VB_ATTACHMENT.OBJECT_ID = VB_DOC_RELATION.ID`, `OBJECT_TYPE=5`. Solr `objectId` vẫn là id văn bản.
 - `fileContent` = Tika rồi bỏ dấu tiếng Việt (giống `TextUtils.removeVietnameseAccents`), không uppercase như part 3.
 - Doc Oracle `IS_DELETE=1` không bị xóa khỏi Solr.
 - Cần Java. Lần đầu `tika` có thể tải jar; hoặc `TIKA_APP_JAR=/opt/tika/tika-app-3.3.2.jar`.
@@ -146,7 +147,7 @@ Sai `FILE_SERVICE_DOWNLOAD_URL` / `TenantCode`, hoặc file chưa có trên file
 LEGACY: `--file-source disk` trên máy mount `FILE_STORAGE_ROOTS`.
 
 **TIKA_FAILED**  
-Cần Java trên PATH (`java -version`).
+Cần Java trên PATH (`java -version`). RAR5 / format Tika chưa hỗ trợ là skip `UNSUPPORTED_FILE_FORMAT`, không phải error.
 
 **scanned=0**  
 Sai schema / bảng trống / `IS_DELETE=1`.

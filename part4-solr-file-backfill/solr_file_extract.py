@@ -13,6 +13,7 @@ Backends (first match wins):
 from __future__ import annotations
 
 import os
+import re
 import ssl
 import subprocess
 import tempfile
@@ -52,6 +53,45 @@ _MIME_BY_SUFFIX = {
 
 class TikaExtractError(Exception):
     pass
+
+
+class TikaUnsupportedFormatError(TikaExtractError):
+    """Format Tika cannot extract (e.g. RAR5). Callers should skip, not fail the job."""
+
+
+# RAR 5.0: Rar!\x1A\x07\x01\x00  (RAR 1.5/4.x is Rar!\x1A\x07\x00).
+RAR5_MAGIC = b"Rar!\x1a\x07\x01"
+
+_UNSUPPORTED_TIKA_MARKERS = (
+    "unsupportedformatexception",
+    "does not yet support",
+    "unsupported format",
+)
+
+
+def detect_unsupported_format(data: bytes, filename: str = "") -> Optional[str]:
+    """Return skip detail if the file is a format Tika cannot extract, else None."""
+    name = Path(filename).name if filename else "file"
+    if data.startswith(RAR5_MAGIC):
+        return f"{name} rar version 5"
+    return None
+
+
+def is_unsupported_tika_error(message: str) -> bool:
+    text = (message or "").lower()
+    return any(marker in text for marker in _UNSUPPORTED_TIKA_MARKERS)
+
+
+def compact_unsupported_detail(filename: str, message: str) -> str:
+    name = Path(filename).name if filename else "file"
+    text = " ".join((message or "").split())
+    match = re.search(r"UnsupportedFormatException:\s*(.+?)(?:\s+at\s+org\.|\Z)", text)
+    if match:
+        return f"{name} {match.group(1).strip()}"[:500]
+    match = re.search(r"Tika does not yet support[^.]*", text, re.I)
+    if match:
+        return f"{name} {match.group(0)}"[:500]
+    return f"{name} unsupported format"[:500]
 
 
 def clip_content(text: str, write_limit: int) -> str:
@@ -130,16 +170,26 @@ def extract_content(
 ) -> str:
     if not data:
         return ""
+    unsupported = detect_unsupported_format(data, filename)
+    if unsupported:
+        raise TikaUnsupportedFormatError(unsupported)
     backend = resolve_tika_backend(tika_server_url, tika_app_jar)
-    if backend == TIKA_BACKEND_SERVER:
-        text = _extract_with_tika_server(
-            data, filename, tika_server_url, timeout=tika_server_timeout
-        )
-    elif backend == TIKA_BACKEND_JAR:
-        jar = (tika_app_jar or os.getenv("TIKA_APP_JAR") or "").strip()
-        text = _extract_with_jar(data, filename, jar)
-    else:
-        text = _extract_with_tika_python(data, filename)
+    try:
+        if backend == TIKA_BACKEND_SERVER:
+            text = _extract_with_tika_server(
+                data, filename, tika_server_url, timeout=tika_server_timeout
+            )
+        elif backend == TIKA_BACKEND_JAR:
+            jar = (tika_app_jar or os.getenv("TIKA_APP_JAR") or "").strip()
+            text = _extract_with_jar(data, filename, jar)
+        else:
+            text = _extract_with_tika_python(data, filename)
+    except TikaUnsupportedFormatError:
+        raise
+    except TikaExtractError as ex:
+        if is_unsupported_tika_error(str(ex)):
+            raise TikaUnsupportedFormatError(compact_unsupported_detail(filename, str(ex))) from ex
+        raise
     return remove_vietnamese_accents(clip_content(text, write_limit))
 
 
@@ -253,8 +303,10 @@ def _extract_with_jar(data: bytes, filename: str, jar: str) -> str:
             capture_output=True,
         )
         if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout).decode("utf-8", errors="replace")[:500]
-            raise TikaExtractError(f"tika-app exit {proc.returncode}: {err}")
+            err = (proc.stderr or proc.stdout).decode("utf-8", errors="replace")[:2000]
+            if is_unsupported_tika_error(err):
+                raise TikaUnsupportedFormatError(compact_unsupported_detail(filename, err))
+            raise TikaExtractError(f"tika-app exit {proc.returncode}: {err[:500]}")
         return proc.stdout.decode("utf-8", errors="replace")
     finally:
         try:

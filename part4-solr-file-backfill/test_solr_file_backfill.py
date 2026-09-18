@@ -10,9 +10,18 @@ if str(_PART_DIR) not in sys.path:
     sys.path.insert(0, str(_PART_DIR))
 
 from solr_doc_file_backfill import ExtractCache, _solr_doc, file_key, process_batch, solr_file_service_id
-from solr_file_db import AttachmentRow, FileIndexRow, pick_attachment, solr_file_id, unique_dept_ids
+from solr_file_db import AttachmentRow, FileIndexRow, collect_index_files, pick_attachment, solr_file_id, unique_dept_ids
 from solr_file_download import FileLoadError, disk_candidates, normalize_relative_path
-from solr_file_extract import clip_content, remove_vietnamese_accents
+from solr_file_extract import (
+    TikaExtractError,
+    TikaUnsupportedFormatError,
+    clip_content,
+    compact_unsupported_detail,
+    detect_unsupported_format,
+    extract_content,
+    is_unsupported_tika_error,
+    remove_vietnamese_accents,
+)
 from solr_file_report import BackfillReport, IssueRow
 from solr_file_solr import add_docs_with_split, escape_solr_query, is_solr_unreachable
 
@@ -48,6 +57,28 @@ def test_pick_attachment_prefers_file_service_id() -> None:
     assert chosen is not None
     assert chosen.attachment_id == "A2"
     assert pick_attachment([]) is None
+
+
+def test_collect_index_files_main_plus_relations() -> None:
+    main = [
+        AttachmentRow("DOC1", "A1", "FS_MAIN", "/main.pdf", "main.pdf", "", "t"),
+    ]
+    relations = [
+        AttachmentRow("DOC1", "R1", "FS_REL1", "/r1.pdf", "r1.pdf", "", "t"),
+        AttachmentRow("DOC1", "R2", "FS_REL2", "/r2.pdf", "r2.pdf", "", "t"),
+        AttachmentRow("DOC1", "R3", "FS_MAIN", "/dup.pdf", "dup.pdf", "", "t"),
+    ]
+    files = collect_index_files(main, relations)
+    assert [row.attachment_id for row in files] == ["A1", "R1", "R2"]
+
+
+def test_collect_index_files_relation_only() -> None:
+    relations = [
+        AttachmentRow("DOC1", "R1", "FS_REL1", "/r1.pdf", "r1.pdf", "", "t"),
+    ]
+    files = collect_index_files([], relations)
+    assert [row.attachment_id for row in files] == ["R1"]
+    assert collect_index_files([], []) == []
 
 
 def test_unique_dept_ids() -> None:
@@ -188,6 +219,44 @@ def test_process_batch_extract_once_per_file() -> None:
     assert all(doc["fileContent"] == "extracted" for doc in solr.docs)
 
 
+def test_process_batch_indexes_relation_file() -> None:
+    class FakeSolr:
+        def __init__(self) -> None:
+            self.docs: List[Dict] = []
+
+        def add_docs(self, docs: List[Dict], commit_within_ms: int) -> None:
+            self.docs.extend(docs)
+
+    class FakeLoader:
+        def load(self, **kwargs) -> bytes:
+            return b"PDFDATA"
+
+    report = BackfillReport(started_at="now")
+    rows = [
+        _row(file_service_id="FS_MAIN", extra_dept_ids=["DEPT2"]),
+        _row(
+            attachment_id="REL1",
+            file_service_id="FS_REL",
+            file_name="related.pdf",
+            extra_dept_ids=["DEPT2"],
+            file_role="relation",
+        ),
+    ]
+    process_batch(
+        rows,
+        report,
+        solr=FakeSolr(),
+        loader=FakeLoader(),
+        extract_fn=lambda data, name: "extracted",
+        cache=ExtractCache(),
+        commit_within_ms=1000,
+        dry_run=False,
+        skip_existing=False,
+    )
+    assert report.scanned == 2
+    assert report.indexed == 4
+
+
 def test_process_batch_empty_content_and_download_error() -> None:
     class FakeLoader:
         def __init__(self, error=None) -> None:
@@ -228,6 +297,79 @@ def test_process_batch_empty_content_and_download_error() -> None:
     assert report2.error_rows[0].reason == "FILE_DOWNLOAD_FAILED"
 
 
+def test_unsupported_rar5_is_skip_not_error() -> None:
+    rar5 = b"Rar!\x1a\x07\x01\x00" + b"\x00" * 16
+    assert detect_unsupported_format(rar5, "archive.rar") == "archive.rar rar version 5"
+    assert detect_unsupported_format(b"Rar!\x1a\x07\x00payload", "old.rar") is None
+    try:
+        extract_content(rar5, "archive.rar")
+        raise AssertionError("expected TikaUnsupportedFormatError")
+    except TikaUnsupportedFormatError as ex:
+        assert "rar version 5" in str(ex)
+
+    tika_msg = (
+        'tika-app exit 1: INFO  [main] org.apache.tika.cli.TikaCLI As a convenience, '
+        "Exception in thread \"main\" org.apache.tika.exception.UnsupportedFormatException: "
+        "Tika does not yet support rar version 5. at org.apache.tika.parser.pkg.RarParser.parse"
+    )
+    assert is_unsupported_tika_error(tika_msg)
+    assert "rar version 5" in compact_unsupported_detail("archive.rar", tika_msg)
+    assert not is_unsupported_tika_error("tika-app exit 1: java not found")
+
+    class FakeLoader:
+        def __init__(self, data: bytes) -> None:
+            self.data = data
+
+        def load(self, **kwargs) -> bytes:
+            return self.data
+
+    report = BackfillReport(started_at="now")
+    process_batch(
+        [_row(doc_id="RAR5", file_name="archive.rar")],
+        report,
+        solr=object(),
+        loader=FakeLoader(rar5),
+        extract_fn=extract_content,
+        cache=ExtractCache(),
+        commit_within_ms=1000,
+        dry_run=False,
+        skip_existing=False,
+    )
+    assert report.errors == 0
+    assert report.skipped_unsupported_format == 1
+    assert report.skipped_rows[0].reason == "UNSUPPORTED_FILE_FORMAT"
+
+    report2 = BackfillReport(started_at="now")
+    process_batch(
+        [_row(doc_id="TIKA")],
+        report2,
+        solr=object(),
+        loader=FakeLoader(b"x"),
+        extract_fn=lambda data, name: (_ for _ in ()).throw(TikaExtractError(tika_msg)),
+        cache=ExtractCache(),
+        commit_within_ms=1000,
+        dry_run=False,
+        skip_existing=False,
+    )
+    assert report2.errors == 0
+    assert report2.skipped_unsupported_format == 1
+
+    report3 = BackfillReport(started_at="now")
+    process_batch(
+        [_row(doc_id="FAIL")],
+        report3,
+        solr=object(),
+        loader=FakeLoader(b"x"),
+        extract_fn=lambda data, name: (_ for _ in ()).throw(TikaExtractError("tika-app exit 1: java not found")),
+        cache=ExtractCache(),
+        commit_within_ms=1000,
+        dry_run=False,
+        skip_existing=False,
+    )
+    assert report3.errors == 1
+    assert report3.error_rows[0].reason == "TIKA_FAILED"
+
+
 def test_extract_cache_lru() -> None:
     cache = ExtractCache(max_size=2)
     cache.put("a", "1")
@@ -258,11 +400,16 @@ def test_issue_row_skip_mapping() -> None:
     report = BackfillReport(started_at="now")
     report.add_skip(IssueRow("NEW", 1, "D", "ALREADY_INDEXED"))
     assert report.skipped_already_indexed == 1
+    report.add_skip(IssueRow("NEW", 1, "R", "UNSUPPORTED_FILE_FORMAT"))
+    assert report.skipped_unsupported_format == 1
+    assert report.skipped_total() == 2
 
 
 if __name__ == "__main__":
     test_solr_file_id()
     test_pick_attachment_prefers_file_service_id()
+    test_collect_index_files_main_plus_relations()
+    test_collect_index_files_relation_only()
     test_unique_dept_ids()
     test_disk_candidates()
     test_clip_content()
@@ -273,7 +420,9 @@ if __name__ == "__main__":
     test_process_batch_dry_run_indexes_per_dept()
     test_process_batch_skips()
     test_process_batch_extract_once_per_file()
+    test_process_batch_indexes_relation_file()
     test_process_batch_empty_content_and_download_error()
+    test_unsupported_rar5_is_skip_not_error()
     test_extract_cache_lru()
     test_split_and_escape()
     test_issue_row_skip_mapping()

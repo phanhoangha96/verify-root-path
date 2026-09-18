@@ -2,7 +2,7 @@
 
 Giống fat JAR: một file chạy được, **không cài Python** trên server.
 
-CLI: Oracle NEW/LEGACY → tải file (file-service hoặc disk) → Apache Tika → bỏ dấu tiếng Việt → Solr `fileContent` → Excel/JSON.
+CLI: Oracle NEW/LEGACY → tải file chính và file `VB_DOC_RELATION` (file-service hoặc disk) → Apache Tika → bỏ dấu tiếng Việt → Solr `fileContent` → Excel/JSON.
 
 Chạy lại **không nhân bản** cùng `fileServiceId` + `deptId` (trừ `--force`). Solr id `{fileServiceId}_{deptId}_file`.
 
@@ -120,8 +120,8 @@ mkdir -p "$TMPDIR"
 ./solr-doc-file-backfill --source NEW
 ```
 
-**TIKA_FAILED / java not found**  
-Binary không kèm JRE. Cài Java trên server, hoặc `TIKA_APP_JAR`.
+**TIKA_FAILED / java not found**
+Binary không kèm JRE. Cài Java trên server, hoặc `TIKA_APP_JAR`. RAR5 / format Tika chưa hỗ trợ là skip `UNSUPPORTED_FILE_FORMAT`.
 
 **Solr HTTP 503 + HTML Squid**  
 HTTP proxy. Unset `HTTP_PROXY`/`HTTPS_PROXY`, hoặc chạy localhost trên máy Solr.

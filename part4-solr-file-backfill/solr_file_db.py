@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
 from solr_file_config import OracleTarget
 
 OBJECT_TYPE_INCOMING = 1
 OBJECT_TYPE_OUTGOING = 2
+# VB_ATTACHMENT.OBJECT_TYPE for files on a VB_DOC_RELATION row.
+ATTACHMENT_OBJECT_TYPE_DOC_RELATION = 5
+# VB_DOC_RELATION.OBJECT_TYPE: 0 = incoming doc, 1 = outgoing doc (Java DOC_RELATION_OBJECT_TYPE).
+DOC_RELATION_OBJECT_TYPE_INCOMING = 0
+DOC_RELATION_OBJECT_TYPE_OUTGOING = 1
 
 
 @dataclass
@@ -43,6 +48,7 @@ class FileIndexRow:
     file_name: str
     root_path: str
     extra_dept_ids: List[str] = field(default_factory=list)
+    file_role: str = "main"  # main | relation (VB_DOC_RELATION)
 
 
 def qualify(schema: str, table: str) -> str:
@@ -108,6 +114,34 @@ def pick_attachment(rows: Sequence[AttachmentRow]) -> Optional[AttachmentRow]:
         return None
     with_id = [row for row in rows if is_true(row.file_service_id)]
     return with_id[0] if with_id else rows[0]
+
+
+def _file_dedupe_key(row: AttachmentRow) -> str:
+    if is_true(row.file_service_id):
+        return row.file_service_id
+    return row.attachment_id
+
+
+def collect_index_files(
+    main_rows: Sequence[AttachmentRow],
+    relation_rows: Sequence[AttachmentRow],
+) -> List[AttachmentRow]:
+    """Match Java collectIndexSolrFileServiceIds: first main file + all VB_DOC_RELATION files."""
+    out: List[AttachmentRow] = []
+    seen: Set[str] = set()
+    main = pick_attachment(main_rows)
+    if main:
+        out.append(main)
+        key = _file_dedupe_key(main)
+        if key:
+            seen.add(key)
+    for row in relation_rows:
+        key = _file_dedupe_key(row)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
 
 
 def solr_file_id(file_service_id: str, dept_id: str) -> str:
@@ -352,6 +386,11 @@ def _is_invalid_identifier(exc: BaseException) -> bool:
     return "ORA-00904" in message or "INVALID IDENTIFIER" in message
 
 
+def _is_missing_object(exc: BaseException) -> bool:
+    message = str(exc).upper()
+    return "ORA-00942" in message or "TABLE OR VIEW DOES NOT EXIST" in message
+
+
 def _fetch_attachments(
     conn,
     schema: str,
@@ -383,6 +422,110 @@ def _fetch_attachments(
                 if not _is_invalid_identifier(ex):
                     raise
         if last_ex is not None:
+            raise last_ex
+        if raw_rows is None:
+            return {}
+        for object_id, attachment_id, file_service_id, file_path, file_name, root_path, tenant_code in raw_rows:
+            if object_id is None or attachment_id is None:
+                continue
+            grouped[str(object_id)].append(
+                AttachmentRow(
+                    object_id=str(object_id),
+                    attachment_id=str(attachment_id),
+                    file_service_id=_as_str(file_service_id) or "",
+                    file_path=_as_str(file_path) or "",
+                    file_name=_as_str(file_name) or "",
+                    root_path=_as_str(root_path) or "",
+                    tenant_code=_as_str(tenant_code) or fallback_tenant,
+                )
+            )
+    return grouped
+
+
+def _relation_attachment_sql_new(schema: str, in_sql: str) -> str:
+    return f"""
+        SELECT r.OBJECT_ID, a.ID, a.FILE_SERVICE_ID, a.FILE_PATH, a.FILE_NAME,
+               CAST(NULL AS VARCHAR2(200)) AS ROOT_PATH, a.TENANT_CODE
+        FROM {qualify(schema, "VB_DOC_RELATION")} r
+        JOIN {qualify(schema, "VB_ATTACHMENT")} a ON a.OBJECT_ID = r.ID
+        WHERE r.OBJECT_ID IN ({in_sql})
+          AND r.OBJECT_TYPE = :rel_object_type
+          AND NVL(r.IS_DELETE, 0) = 0
+          AND a.OBJECT_TYPE = :att_object_type
+          AND NVL(a.IS_DELETE, 0) = 0
+        ORDER BY r.OBJECT_ID, r.CREATE_TIME ASC NULLS LAST, a.CREATE_TIME ASC NULLS LAST, a.ID ASC
+    """
+
+
+def _relation_attachment_sql_hybrid(schema: str, in_sql: str) -> str:
+    return f"""
+        SELECT r.OBJECT_ID, a.ID, a.FILE_SERVICE_ID, a.FILE_PATH, a.FILE_NAME, a.ROOT_PATH,
+               CAST(NULL AS VARCHAR2(100)) AS TENANT_CODE
+        FROM {qualify(schema, "VB_DOC_RELATION")} r
+        JOIN {qualify(schema, "VB_ATTACHMENT")} a ON a.OBJECT_ID = r.ID
+        WHERE r.OBJECT_ID IN ({in_sql})
+          AND r.OBJECT_TYPE = :rel_object_type
+          AND NVL(r.IS_DELETE, 0) = 0
+          AND a.OBJECT_TYPE = :att_object_type
+          AND NVL(a.IS_DELETE, 0) = 0
+        ORDER BY r.OBJECT_ID, r.ID ASC, a.ID ASC
+    """
+
+
+def _relation_attachment_sql_legacy(schema: str, in_sql: str) -> str:
+    return f"""
+        SELECT r.OBJECT_ID, a.ID,
+               CAST(NULL AS VARCHAR2(100)) AS FILE_SERVICE_ID,
+               a.FILE_PATH, a.FILE_NAME, a.ROOT_PATH,
+               CAST(NULL AS VARCHAR2(100)) AS TENANT_CODE
+        FROM {qualify(schema, "VB_DOC_RELATION")} r
+        JOIN {qualify(schema, "VB_ATTACHMENT")} a ON a.OBJECT_ID = r.ID
+        WHERE r.OBJECT_ID IN ({in_sql})
+          AND r.OBJECT_TYPE = :rel_object_type
+          AND NVL(r.IS_DELETE, 0) = 0
+          AND a.OBJECT_TYPE = :att_object_type
+          AND NVL(a.IS_DELETE, 0) = 0
+        ORDER BY r.OBJECT_ID, r.ID ASC, a.ID ASC
+    """
+
+
+def _fetch_relation_attachments(
+    conn,
+    schema: str,
+    ids: Sequence[str],
+    relation_object_type: int,
+    fallback_tenant: str,
+) -> Dict[str, List[AttachmentRow]]:
+    """Files linked via VB_DOC_RELATION: VB_ATTACHMENT.OBJECT_ID = VB_DOC_RELATION.ID, OBJECT_TYPE=5."""
+    if not ids:
+        return {}
+    in_sql, binds = _in_clause("rid", ids)
+    binds["rel_object_type"] = relation_object_type
+    binds["att_object_type"] = ATTACHMENT_OBJECT_TYPE_DOC_RELATION
+    grouped: Dict[str, List[AttachmentRow]] = defaultdict(list)
+    with conn.cursor() as cur:
+        cur.arraysize = 1000
+        raw_rows = None
+        last_ex: Optional[BaseException] = None
+        for sql in (
+            _relation_attachment_sql_new(schema, in_sql),
+            _relation_attachment_sql_hybrid(schema, in_sql),
+            _relation_attachment_sql_legacy(schema, in_sql),
+        ):
+            try:
+                cur.execute(sql, binds)
+                raw_rows = cur.fetchall()
+                last_ex = None
+                break
+            except Exception as ex:
+                last_ex = ex
+                if _is_missing_object(ex):
+                    return {}
+                if not _is_invalid_identifier(ex):
+                    raise
+        if last_ex is not None:
+            if _is_missing_object(last_ex) or _is_invalid_identifier(last_ex):
+                return {}
             raise last_ex
         if raw_rows is None:
             return {}
@@ -477,6 +620,28 @@ def _fetch_extra_depts(
     return extra
 
 
+def _file_index_row(
+    doc: DocLite,
+    chosen: Optional[AttachmentRow],
+    extra: List[str],
+    file_role: str = "main",
+) -> FileIndexRow:
+    return FileIndexRow(
+        doc_id=doc.id,
+        source=doc.source,
+        object_type=doc.object_type,
+        dept_id=doc.dept_id,
+        tenant_code=chosen.tenant_code if chosen and is_true(chosen.tenant_code) else doc.tenant_code,
+        attachment_id=chosen.attachment_id if chosen else "",
+        file_service_id=chosen.file_service_id if chosen else "",
+        file_path=chosen.file_path if chosen else "",
+        file_name=chosen.file_name if chosen else "",
+        root_path=chosen.root_path if chosen else "",
+        extra_dept_ids=extra,
+        file_role=file_role,
+    )
+
+
 def _attach_files(
     conn,
     schema: str,
@@ -496,6 +661,13 @@ def _attach_files(
         docs[0].object_type,
         fallback_tenant,
     )
+    relation_attachments = _fetch_relation_attachments(
+        conn,
+        schema,
+        [doc.id for doc in docs],
+        DOC_RELATION_OBJECT_TYPE_INCOMING if incoming else DOC_RELATION_OBJECT_TYPE_OUTGOING,
+        fallback_tenant,
+    )
     extra_depts = _fetch_extra_depts(
         conn,
         schema,
@@ -506,21 +678,15 @@ def _attach_files(
     )
     rows: List[FileIndexRow] = []
     for doc in docs:
-        chosen = pick_attachment(attachments.get(doc.id, []))
         extra = unique_dept_ids(extra_depts.get(doc.id, []))
-        rows.append(
-            FileIndexRow(
-                doc_id=doc.id,
-                source=doc.source,
-                object_type=doc.object_type,
-                dept_id=doc.dept_id,
-                tenant_code=chosen.tenant_code if chosen and is_true(chosen.tenant_code) else doc.tenant_code,
-                attachment_id=chosen.attachment_id if chosen else "",
-                file_service_id=chosen.file_service_id if chosen else "",
-                file_path=chosen.file_path if chosen else "",
-                file_name=chosen.file_name if chosen else "",
-                root_path=chosen.root_path if chosen else "",
-                extra_dept_ids=extra,
-            )
-        )
+        main_rows = attachments.get(doc.id, [])
+        files = collect_index_files(main_rows, relation_attachments.get(doc.id, []))
+        if not files:
+            rows.append(_file_index_row(doc, None, extra, "main"))
+            continue
+        main = pick_attachment(main_rows)
+        main_id = main.attachment_id if main else ""
+        for chosen in files:
+            role = "main" if chosen.attachment_id == main_id else "relation"
+            rows.append(_file_index_row(doc, chosen, extra, role))
     return rows

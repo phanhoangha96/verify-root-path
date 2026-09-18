@@ -6,6 +6,10 @@ Matches eoffice-solr DocServiceImpl.addDocument:
   download/read file → Tika extract → TextUtils.removeVietnameseAccents → Solr add
   fields: id, objectId, objectType, fileContent, fileServiceId, deptId, tenantCode
 
+Outgoing create (VbOutgoingDocCreateService.createIndexSolrData) indexes:
+  - main file (VB_ATTACHMENT OBJECT_TYPE=2)
+  - related files (VB_DOC_RELATION + VB_ATTACHMENT OBJECT_ID=relation.ID, OBJECT_TYPE=5)
+
 Does not call eoffice-business. Re-runs skip existing (fileServiceId + deptId)
 unless --force. Solr id: {fileServiceId}_{deptId}_file (overwrite=true).
 
@@ -48,8 +52,11 @@ from solr_file_download import FileBytesLoader, FileLoadError
 from solr_file_extract import (
     TIKA_BACKEND_SERVER,
     TikaExtractError,
+    TikaUnsupportedFormatError,
+    compact_unsupported_detail,
     describe_tika_backend,
     extract_content,
+    is_unsupported_tika_error,
     ping_tika_server,
     resolve_tika_backend,
 )
@@ -191,7 +198,8 @@ def process_batch(
                         row.object_type,
                         row.doc_id,
                         "ALREADY_INDEXED",
-                        f"fileServiceId={file_id} deptId={dept_id}",
+                        f"fileServiceId={file_id} deptId={dept_id}"
+                        + (" role=relation" if row.file_role == "relation" else ""),
                     )
                 )
                 continue
@@ -205,19 +213,40 @@ def process_batch(
         try:
             content = _load_and_extract(row, loader, extract_fn, cache)
         except FileLoadError as ex:
+            detail = ex.detail
+            if row.file_role == "relation":
+                detail = f"role=relation {detail}".strip()
             if ex.reason in {"MISSING_FILE_SERVICE_ID", "FILE_NOT_FOUND", "MISSING_TENANT_CODE"}:
-                report.add_skip(IssueRow(row.source, row.object_type, row.doc_id, ex.reason, ex.detail))
+                report.add_skip(IssueRow(row.source, row.object_type, row.doc_id, ex.reason, detail))
             else:
-                report.add_error(IssueRow(row.source, row.object_type, row.doc_id, ex.reason, ex.detail[:1000]))
+                report.add_error(IssueRow(row.source, row.object_type, row.doc_id, ex.reason, detail[:1000]))
             continue
         except TikaExtractError as ex:
-            report.add_error(IssueRow(row.source, row.object_type, row.doc_id, "TIKA_FAILED", str(ex)[:1000]))
+            if isinstance(ex, TikaUnsupportedFormatError) or is_unsupported_tika_error(str(ex)):
+                skip_detail = (
+                    str(ex)[:500]
+                    if isinstance(ex, TikaUnsupportedFormatError)
+                    else compact_unsupported_detail(row.file_name, str(ex))
+                )
+                if row.file_role == "relation":
+                    skip_detail = f"role=relation {skip_detail}".strip()
+                report.add_skip(
+                    IssueRow(row.source, row.object_type, row.doc_id, "UNSUPPORTED_FILE_FORMAT", skip_detail)
+                )
+            else:
+                detail = str(ex)[:1000]
+                if row.file_role == "relation":
+                    detail = f"role=relation {detail}".strip()
+                report.add_error(IssueRow(row.source, row.object_type, row.doc_id, "TIKA_FAILED", detail))
             continue
         except Exception as ex:
             report.add_error(IssueRow(row.source, row.object_type, row.doc_id, "FILE_READ_FAILED", str(ex)[:1000]))
             continue
         if not (content or "").strip():
-            report.add_skip(IssueRow(row.source, row.object_type, row.doc_id, "EMPTY_FILE_CONTENT", row.file_name))
+            empty_detail = row.file_name
+            if row.file_role == "relation":
+                empty_detail = f"role=relation {empty_detail}".strip()
+            report.add_skip(IssueRow(row.source, row.object_type, row.doc_id, "EMPTY_FILE_CONTENT", empty_detail))
             continue
         for dept_id in pending_depts:
             ready.append(_solr_doc(row, dept_id, content))
@@ -251,13 +280,7 @@ def _run_stream(
 ) -> None:
     total = 0
     started = time.monotonic()
-    skipped = lambda: (
-        report.skipped_missing_dept
-        + report.skipped_missing_attachment
-        + report.skipped_missing_file
-        + report.skipped_empty_content
-        + report.skipped_already_indexed
-    )
+    skipped = lambda: report.skipped_total()
     for page in pages:
         total += len(page)
         existing = _existing_for_page(solr, page, skip_existing and not dry_run)
@@ -544,13 +567,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         report.finished_at = datetime.now().isoformat(timespec="seconds")
         report.duration_seconds = round(time.monotonic() - started, 2)
         paths = write_reports(report, settings.output_dir, stamp, settings.output_file)
-        skipped = (
-            report.skipped_missing_dept
-            + report.skipped_missing_attachment
-            + report.skipped_missing_file
-            + report.skipped_empty_content
-            + report.skipped_already_indexed
-        )
+        skipped = report.skipped_total()
         print(
             f"Done. scanned={report.scanned} indexed={report.indexed} "
             f"skipped={skipped} errors={report.errors} duration={report.duration_seconds}s",

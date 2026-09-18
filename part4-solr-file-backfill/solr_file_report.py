@@ -37,6 +37,7 @@ class BackfillReport:
     skipped_missing_file: int = 0
     skipped_empty_content: int = 0
     skipped_already_indexed: int = 0
+    skipped_unsupported_format: int = 0
     errors: int = 0
     solr_batches: int = 0
     by_key: Dict[str, Dict[str, int]] = field(default_factory=dict)
@@ -57,6 +58,7 @@ class BackfillReport:
                 "skipped_missing_file": 0,
                 "skipped_empty_content": 0,
                 "skipped_already_indexed": 0,
+                "skipped_unsupported_format": 0,
                 "errors": 0,
             },
         )
@@ -71,10 +73,21 @@ class BackfillReport:
             "FILE_NOT_FOUND": "skipped_missing_file",
             "EMPTY_FILE_CONTENT": "skipped_empty_content",
             "ALREADY_INDEXED": "skipped_already_indexed",
+            "UNSUPPORTED_FILE_FORMAT": "skipped_unsupported_format",
         }.get(row.reason, "skipped_missing_file")
         self.bump(row.source, row.object_type, field)
         if len(self.skipped_rows) < MAX_DETAIL_ROWS:
             self.skipped_rows.append(row)
+
+    def skipped_total(self) -> int:
+        return (
+            self.skipped_missing_dept
+            + self.skipped_missing_attachment
+            + self.skipped_missing_file
+            + self.skipped_empty_content
+            + self.skipped_already_indexed
+            + self.skipped_unsupported_format
+        )
 
     def add_error(self, row: IssueRow) -> None:
         self.bump(row.source, row.object_type, "errors")
@@ -111,6 +124,7 @@ def write_reports(report: BackfillReport, output_dir: Path, stamp: str, output_f
         "skipped_missing_file": report.skipped_missing_file,
         "skipped_empty_content": report.skipped_empty_content,
         "skipped_already_indexed": report.skipped_already_indexed,
+        "skipped_unsupported_format": report.skipped_unsupported_format,
         "errors": report.errors,
         "solr_batches": report.solr_batches,
         "by_key": report.by_key,
@@ -144,6 +158,7 @@ def write_reports(report: BackfillReport, output_dir: Path, stamp: str, output_f
         ("Skipped_missing_file", report.skipped_missing_file),
         ("Skipped_empty_content", report.skipped_empty_content),
         ("Skipped_already_indexed", report.skipped_already_indexed),
+        ("Skipped_unsupported_format", report.skipped_unsupported_format),
         ("Errors", report.errors),
         ("Solr_batches", report.solr_batches),
     ]:
@@ -161,6 +176,7 @@ def write_reports(report: BackfillReport, output_dir: Path, stamp: str, output_f
             "SKIPPED_MISSING_FILE",
             "SKIPPED_EMPTY_CONTENT",
             "SKIPPED_ALREADY_INDEXED",
+            "SKIPPED_UNSUPPORTED_FORMAT",
             "ERRORS",
         ]
     )
@@ -176,6 +192,7 @@ def write_reports(report: BackfillReport, output_dir: Path, stamp: str, output_f
                 bucket.get("skipped_missing_file", 0),
                 bucket.get("skipped_empty_content", 0),
                 bucket.get("skipped_already_indexed", 0),
+                bucket.get("skipped_unsupported_format", 0),
                 bucket.get("errors", 0),
             ]
         )

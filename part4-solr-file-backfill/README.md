@@ -1,10 +1,12 @@
 # Part 4 — Solr file content backfill
 
-CLI one-shot: đọc văn bản từ Oracle (NEW và/hoặc LEGACY) → lấy file chính (`VB_ATTACHMENT`) → extract text bằng Apache Tika → bỏ dấu tiếng Việt → ghi Solr `fileContent` → xuất Excel/JSON.
+CLI one-shot: đọc văn bản từ Oracle (NEW và/hoặc LEGACY) → lấy file chính (`VB_ATTACHMENT`) **và file văn bản liên quan** (`VB_DOC_RELATION` + `VB_ATTACHMENT.OBJECT_ID = VB_DOC_RELATION.ID`) → extract text bằng Apache Tika → bỏ dấu tiếng Việt → ghi Solr `fileContent` → xuất Excel/JSON.
 
 Không gọi `eoffice-business`. Khớp luồng realtime:
 
-`IncomingDocController.indexFileUsingSolr` → `SolrService` → RabbitMQ → `eoffice-solr DocServiceImpl.addDocument` (tải file, Tika, `TextUtils.removeVietnameseAccents`, `solrClient.add`).
+`IncomingDocController.indexFileUsingSolr` / `OutgoingDocController` → `SolrService` → RabbitMQ → `eoffice-solr DocServiceImpl.addDocument` (tải file, Tika, `TextUtils.removeVietnameseAccents`, `solrClient.add`).
+
+Văn bản đi (`createOutgoingDocV2` → `createIndexSolrData`): Solr FILE gồm file chính **và** mọi file gắn `VB_DOC_RELATION` (`VB_ATTACHMENT.OBJECT_TYPE=5`).
 
 Chạy lại **không nhân bản** cùng `fileServiceId` + `deptId` (bỏ qua, giống `POST /document/add`). Solr id deterministic: `{fileServiceId}_{deptId}_file` (`overwrite=true`). `--force` ghi đè id đó.
 
@@ -19,9 +21,11 @@ Solr FILE doc (không có `indexType=META`):
 - `fileContent` (Tika text, rồi `TextUtils.removeVietnameseAccents`: NFD, bỏ dấu, `đ/Đ` → `d/D`; giữ hoa/thường và dấu câu)
 - `fileServiceId`, `deptId`, `tenantCode`
 
-Incoming: file chính `OBJECT_TYPE=1`, index theo `TO_DEPT_ID` + `DEPT_RECEIVER_ID` trên `VB_INCOMING_PROCESS`.
+Incoming: file chính `OBJECT_TYPE=1` + file `VB_DOC_RELATION` (`OBJECT_TYPE=0` trên relation, attachment `OBJECT_TYPE=5`), index theo `TO_DEPT_ID` + `DEPT_RECEIVER_ID` trên `VB_INCOMING_PROCESS`.
 
-Outgoing: file chính `OBJECT_TYPE=2`, index theo `PUBLISHER_ID` + `DEPT_RECEIVER_ID` process + CC (`VB_CC_INFO`).
+Outgoing: file chính `OBJECT_TYPE=2` + file `VB_DOC_RELATION` (`OBJECT_TYPE=1` trên relation, attachment `OBJECT_TYPE=5`, `OBJECT_ID = VB_DOC_RELATION.ID`), index theo `PUBLISHER_ID` + `DEPT_RECEIVER_ID` process + CC (`VB_CC_INFO`).
+
+Cùng `fileServiceId` trên file chính và relation chỉ index một lần.
 
 ---
 
@@ -156,11 +160,11 @@ Mỗi lần chạy tạo:
 |-------|----------|
 | `Overview` | scanned / indexed / skipped / errors |
 | `By_source` | NEW vs LEGACY × incoming (1) / outgoing (2) |
-| `Skipped` | thiếu attachment / dept / file, content rỗng, đã index (tối đa 20_000) |
+| `Skipped` | thiếu attachment / dept / file, content rỗng, format Tika không hỗ trợ (RAR5), đã index (tối đa 20_000) |
 | `Errors` | tải file / Tika / ghi Solr / FATAL |
 | `Skip_reasons` | gom theo lý do skip |
 
-`scanned` = số văn bản Oracle. `indexed` = số Solr FILE doc (một văn bản × nhiều dept).
+`scanned` = số file Oracle (file chính + file `VB_DOC_RELATION`; văn bản không có file vẫn đếm 1). `indexed` = số Solr FILE doc (một file × nhiều dept).
 
 Exit code `0` = không error; `1` = có error trong report.
 
@@ -175,7 +179,9 @@ Exit code `0` = không error; `1` = có error trong report.
 - Cùng một file index nhiều dept: Tika chỉ chạy **một lần** (cache theo `fileServiceId`).
 - Doc Oracle `IS_DELETE=1` không bị xóa khỏi Solr.
 - PDF scan (không text layer): Tika ra rỗng → skip `EMPTY_FILE_CONTENT` (không OCR trừ khi Tika/Tesseract được cài trên máy).
+- Archive Tika không parse được (RAR5, `UnsupportedFormatException`): skip `UNSUPPORTED_FILE_FORMAT`, không tính error. RAR 4.x vẫn extract bình thường.
 - Attachment lấy file chính `findByDoc`: `OBJECT_TYPE` 1/2, `IS_DELETE=0`, `STATUS` null hoặc `active`.
+- File văn bản liên quan: `VB_DOC_RELATION.IS_DELETE=0` theo `OBJECT_ID` = doc, rồi `VB_ATTACHMENT` với `OBJECT_ID = VB_DOC_RELATION.ID` và `OBJECT_TYPE=5` (không lọc `STATUS`, khớp `findAllByDoc`). Solr `objectId` vẫn là id văn bản, `objectType` 1/2.
 
 ---
 
@@ -210,12 +216,16 @@ Local (không có `TIKA_SERVER_URL`): cần Java. Lần đầu `tika` tải jar.
 export TIKA_APP_JAR=/opt/tika/tika-app-3.3.2.jar
 ```
 
+**UNSUPPORTED_FILE_FORMAT**  
+File là RAR5 (WinRAR 5+) hoặc format Tika chưa hỗ trợ. Không phải lỗi job; Solr không index được text từ archive này.
+
 **scanned=0**  
 Sai schema / toàn `IS_DELETE=1`. Kiểm tra:
 
 ```sql
 SELECT COUNT(*) FROM <SCHEMA>.VB_INCOMING_DOC WHERE NVL(IS_DELETE, 0) = 0;
-SELECT COUNT(*) FROM <SCHEMA>.VB_ATTACHMENT WHERE OBJECT_TYPE IN (1, 2) AND NVL(IS_DELETE, 0) = 0;
+SELECT COUNT(*) FROM <SCHEMA>.VB_ATTACHMENT WHERE OBJECT_TYPE IN (1, 2, 5) AND NVL(IS_DELETE, 0) = 0;
+SELECT COUNT(*) FROM <SCHEMA>.VB_DOC_RELATION WHERE NVL(IS_DELETE, 0) = 0;
 ```
 
 **Đếm FILE trên Solr**
