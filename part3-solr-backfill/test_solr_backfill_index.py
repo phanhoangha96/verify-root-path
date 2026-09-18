@@ -61,7 +61,7 @@ def test_solr_doc_instruction_and_comment() -> None:
     assert doc["comment"] == build_search_text(strip_html("<p>Ý kiến</p>"))
     assert "CHIDAOGAP" in doc["searchText"]
     assert "YKIEN" in doc["searchText"]
-    assert doc["docCode"] == "CV001"
+    assert doc["docCode"] == "CV-001"
     assert doc["bookNumber"] == "10"
     assert doc["priorityOrder"] == 7
 

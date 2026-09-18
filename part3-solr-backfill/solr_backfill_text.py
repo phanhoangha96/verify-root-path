@@ -8,8 +8,8 @@ from typing import Iterable, List, Optional
 
 # Java: Normalizer.NFD + \\p{InCombiningDiacriticalMarks} + đ/Đ
 _COMBINING_MARKS = re.compile(r"[\u0300-\u036f]+")
-# Java: [\\+\\-\\&\\|\\!\\(\\)\\{\\}\\[\\]\\^\"~\\*\\?:/]
-_SPECIAL_CHARS = re.compile(r'[\\+\-&|!(){}[\]^"~*?:/]')
+# Java: [\\+\\&\\|\\!\\(\\)\\{\\}\\[\\]\\^\"~\\*\\?:]  (keep / and -)
+_SPECIAL_CHARS = re.compile(r'[\\+&|!(){}[\]^"~*?:]')
 _HTML_TAG = re.compile(r"<[^>]+>")
 _WHITESPACE = re.compile(r"\s+")
 _PLACE_SEP = re.compile(r"[,;|/\n\r]+")
