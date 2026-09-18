@@ -188,6 +188,12 @@ Exit code `0` = không error; `1` = có error trong report.
 
 ## 7. Troubleshooting
 
+**DPY-3016 / No module named 'cryptography'**  
+python-oracledb thin mode cần package `cryptography`. Binary cũ chưa đóng gói module này — `pip install` trên server **không** sửa được file `./solr-doc-file-backfill`.
+
+- Gói source: `pip install -r requirements.txt` rồi chạy `python solr_doc_file_backfill.py ...`
+- Gói binary: build lại `python build/build_solr_file_backfill_dist.py --linux`
+
 **Ping Solr fail** — giống part 3: sai host/core, firewall, HTTP proxy. Script bypass proxy.
 
 **FILE_DOWNLOAD_FAILED HTTP 404 / 500**  

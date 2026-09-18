@@ -35,8 +35,9 @@ PYTHON_FILES = [
     "solr_file_report.py",
 ]
 
-PYINSTALLER_COLLECT = ["oracledb", "openpyxl", "tika", "requests"]
-PYINSTALLER_HIDDEN = ["dotenv", "tika", "tika.parser", "tika.tika", "requests"]
+# oracledb thin mode imports cryptography at connect time (DPY-3016 if missing).
+PYINSTALLER_COLLECT = ["oracledb", "openpyxl", "tika", "requests", "cryptography", "cffi"]
+PYINSTALLER_HIDDEN = ["dotenv", "tika", "tika.parser", "tika.tika", "requests", "cryptography", "_cffi_backend"]
 
 
 def _copy(src: Path, dest: Path) -> None:

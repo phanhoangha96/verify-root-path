@@ -34,6 +34,10 @@ PYTHON_FILES = [
     "solr_backfill_report.py",
 ]
 
+# oracledb thin mode imports cryptography at connect time (DPY-3016 if missing).
+PYINSTALLER_COLLECT = ["oracledb", "openpyxl", "cryptography", "cffi"]
+PYINSTALLER_HIDDEN = ["dotenv", "cryptography", "_cffi_backend"]
+
 
 def _copy(src: Path, dest: Path) -> None:
     if not src.is_file():
@@ -91,7 +95,7 @@ def _ensure_pyinstaller() -> None:
 
 
 def _pyinstaller_cmd(work_dir: Path, *, onefile: bool) -> list[str]:
-    return [
+    cmd = [
         sys.executable,
         "-m",
         "PyInstaller",
@@ -100,20 +104,23 @@ def _pyinstaller_cmd(work_dir: Path, *, onefile: bool) -> list[str]:
         "--onefile" if onefile else "--onedir",
         "--name",
         BINARY_NAME,
-        "--collect-all",
-        "oracledb",
-        "--collect-all",
-        "openpyxl",
-        "--hidden-import",
-        "dotenv",
-        "--distpath",
-        str(work_dir / "pyi-dist"),
-        "--workpath",
-        str(work_dir / "pyi-work"),
-        "--specpath",
-        str(work_dir),
-        str(work_dir / "solr_doc_meta_backfill.py"),
     ]
+    for name in PYINSTALLER_COLLECT:
+        cmd.extend(["--collect-all", name])
+    for name in PYINSTALLER_HIDDEN:
+        cmd.extend(["--hidden-import", name])
+    cmd.extend(
+        [
+            "--distpath",
+            str(work_dir / "pyi-dist"),
+            "--workpath",
+            str(work_dir / "pyi-work"),
+            "--specpath",
+            str(work_dir),
+            str(work_dir / "solr_doc_meta_backfill.py"),
+        ]
+    )
+    return cmd
 
 
 def _copy_pyinstaller_output(pyi_dist: Path, dest: Path, *, onefile: bool) -> None:

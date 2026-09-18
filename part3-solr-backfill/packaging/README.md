@@ -130,6 +130,9 @@ Exit code `0` = không error; `1` = có error trong report.
 
 ## 7. Troubleshooting
 
+**DPY-3016 / No module named 'cryptography'**  
+python-oracledb thin mode cần `cryptography`. `pip install cryptography` trên server không sửa được binary. Cài `pip install -r requirements.txt` rồi chạy `.py`, hoặc xin gói binary mới (build `--linux` sau khi repo đã collect `cryptography`).
+
 **Solr HTTP 503 + HTML Squid / proxy**  
 Request Solr đang đi qua HTTP proxy. Script đã bypass proxy. Nếu vẫn lỗi: unset `HTTP_PROXY`/`HTTPS_PROXY`, hoặc chạy trên chính server Solr (`localhost`).
 

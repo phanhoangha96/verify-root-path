@@ -18,7 +18,11 @@ RUN if [ "$ONEFILE" = "1" ]; then \
          --name solr-doc-meta-backfill \
          --collect-all oracledb \
          --collect-all openpyxl \
+         --collect-all cryptography \
+         --collect-all cffi \
          --hidden-import dotenv \
+         --hidden-import cryptography \
+         --hidden-import _cffi_backend \
          solr_doc_meta_backfill.py
 
 FROM scratch AS export

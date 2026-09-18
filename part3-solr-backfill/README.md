@@ -165,6 +165,12 @@ Gói ra `dist/solr-doc-meta-backfill/` (+ zip). README trong zip là bản dành
 
 ## 8. Troubleshooting
 
+**DPY-3016 / No module named 'cryptography'**  
+python-oracledb thin mode cần package `cryptography`. Binary cũ chưa đóng gói module này — `pip install` trên server **không** sửa được file `./solr-doc-meta-backfill`.
+
+- Gói source: `pip install -r requirements.txt` rồi chạy `python solr_doc_meta_backfill.py ...`
+- Gói binary: build lại `python build/build_solr_backfill_dist.py --linux`
+
 **Solr HTTP 503 + HTML Squid / proxy**  
 Request Solr đang đi qua HTTP proxy. Script đã bypass proxy. Nếu vẫn lỗi: unset `HTTP_PROXY`/`HTTPS_PROXY`, hoặc chạy trên chính server Solr (`localhost`).
 

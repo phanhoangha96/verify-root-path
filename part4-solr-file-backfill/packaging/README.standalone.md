@@ -111,6 +111,9 @@ Exit `0` = OK, `1` = có error.
 **cannot execute: required file not found / Exec format error**  
 Sai OS/arch. Cần binary Linux amd64 (build lại bằng `python build/build_solr_file_backfill_dist.py --linux` trong `part4-solr-file-backfill`).
 
+**DPY-3016 / No module named 'cryptography'**  
+Binary cũ thiếu `cryptography` (oracledb thin mode). `pip install` trên server không giúp. Cần gói build lại bằng `python build/build_solr_file_backfill_dist.py --linux`.
+
 **Lỗi extract /tmp (onefile)**  
 Server gắn `noexec` trên `/tmp`. Xin lại gói `--onedir`, hoặc:
 

@@ -9,3 +9,4 @@ output/
 dist/
 *.spec
 new_oracle_tenants.json
+solr-backfill-service/

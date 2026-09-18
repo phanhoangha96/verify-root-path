@@ -20,11 +20,15 @@ RUN if [ "$ONEFILE" = "1" ]; then \
          --collect-all openpyxl \
          --collect-all tika \
          --collect-all requests \
+         --collect-all cryptography \
+         --collect-all cffi \
          --hidden-import dotenv \
          --hidden-import tika \
          --hidden-import tika.parser \
          --hidden-import tika.tika \
          --hidden-import requests \
+         --hidden-import cryptography \
+         --hidden-import _cffi_backend \
          solr_doc_file_backfill.py
 
 FROM scratch AS export
