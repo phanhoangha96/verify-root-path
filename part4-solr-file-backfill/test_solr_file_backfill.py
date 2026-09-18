@@ -85,6 +85,25 @@ def test_unique_dept_ids() -> None:
     assert unique_dept_ids(["DEPT1", ""], ["DEPT1", "DEPT2", None]) == ["DEPT1", "DEPT2"]
 
 
+def test_process_batch_indexes_doc_user_dept_besides_publisher() -> None:
+    """Inbox dept (VB_DOC_USER) differs from PUBLISHER_ID — both must get a Solr FILE copy."""
+    report = BackfillReport(started_at="now")
+    rows = [_row(dept_id="139eb3a2-publisher", extra_dept_ids=["7b9717d6-doc-user"])]
+    process_batch(
+        rows,
+        report,
+        solr=None,
+        loader=None,
+        extract_fn=lambda data, name: "text",
+        cache=ExtractCache(),
+        commit_within_ms=1000,
+        dry_run=True,
+        skip_existing=False,
+    )
+    assert report.scanned == 1
+    assert report.indexed == 2
+
+
 def test_disk_candidates() -> None:
     paths = disk_candidates("2024/a.pdf", ["/data/upload"], "dir_upload_path2")
     assert "/data/u02/data1/voffice/Upload/2024/a.pdf" in paths
@@ -411,6 +430,7 @@ if __name__ == "__main__":
     test_collect_index_files_main_plus_relations()
     test_collect_index_files_relation_only()
     test_unique_dept_ids()
+    test_process_batch_indexes_doc_user_dept_besides_publisher()
     test_disk_candidates()
     test_clip_content()
     test_remove_vietnamese_accents()

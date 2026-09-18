@@ -121,6 +121,7 @@ Exit code `0` = không error; `1` = có error trong report.
 ## 6. Lưu ý
 
 - Chạy lại skip `fileServiceId` + `deptId` đã có (trừ `--force`).
+- Outgoing clone thêm `VB_DOC_USER.DEPT_ID` (hộp thư), không chỉ `PUBLISHER_ID` + process/CC.
 - File văn bản liên quan: `VB_ATTACHMENT.OBJECT_ID = VB_DOC_RELATION.ID`, `OBJECT_TYPE=5`. Solr `objectId` vẫn là id văn bản.
 - `fileContent` = Tika rồi bỏ dấu tiếng Việt (giống `TextUtils.removeVietnameseAccents`), không uppercase như part 3.
 - Doc Oracle `IS_DELETE=1` không bị xóa khỏi Solr.

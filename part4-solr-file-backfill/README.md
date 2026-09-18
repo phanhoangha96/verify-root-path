@@ -21,9 +21,9 @@ Solr FILE doc (không có `indexType=META`):
 - `fileContent` (Tika text, rồi `TextUtils.removeVietnameseAccents`: NFD, bỏ dấu, `đ/Đ` → `d/D`; giữ hoa/thường và dấu câu)
 - `fileServiceId`, `deptId`, `tenantCode`
 
-Incoming: file chính `OBJECT_TYPE=1` + file `VB_DOC_RELATION` (`OBJECT_TYPE=0` trên relation, attachment `OBJECT_TYPE=5`), index theo `TO_DEPT_ID` + `DEPT_RECEIVER_ID` trên `VB_INCOMING_PROCESS`.
+Incoming: file chính `OBJECT_TYPE=1` + file `VB_DOC_RELATION` (`OBJECT_TYPE=0` trên relation, attachment `OBJECT_TYPE=5`), index theo `TO_DEPT_ID` + `DEPT_RECEIVER_ID` trên `VB_INCOMING_PROCESS` + `VB_DOC_USER.DEPT_ID` (`DOC_TYPE=0`).
 
-Outgoing: file chính `OBJECT_TYPE=2` + file `VB_DOC_RELATION` (`OBJECT_TYPE=1` trên relation, attachment `OBJECT_TYPE=5`, `OBJECT_ID = VB_DOC_RELATION.ID`), index theo `PUBLISHER_ID` + `DEPT_RECEIVER_ID` process + CC (`VB_CC_INFO`).
+Outgoing: file chính `OBJECT_TYPE=2` + file `VB_DOC_RELATION` (`OBJECT_TYPE=1` trên relation, attachment `OBJECT_TYPE=5`, `OBJECT_ID = VB_DOC_RELATION.ID`), index theo `PUBLISHER_ID` + `DEPT_RECEIVER_ID` process + CC (`VB_CC_INFO`) + `VB_DOC_USER.DEPT_ID` (`DOC_TYPE=1`). Cần `VB_DOC_USER` vì hộp thư (Chờ xử lý) lọc theo dept người dùng, trong khi `PUBLISHER_ID` thường là đơn vị ban hành (ví dụ Văn phòng Bộ) khác phòng soạn thảo.
 
 Cùng `fileServiceId` trên file chính và relation chỉ index một lần.
 
@@ -175,6 +175,7 @@ Exit code `0` = không error; `1` = có error trong report.
 - Không gọi eoffice-solr HTTP; ghi Solr trực tiếp như part 3.
 - Java realtime dùng UUID cho `id`. Script dùng `{fileServiceId}_{deptId}_file`. Doc UUID cũ vẫn được nhận diện qua query `fileServiceId` + `deptId` và **skip** (trừ `--force`).
 - `--force` ghi đè id deterministic; không xóa doc UUID cũ do Java tạo.
+- Bản copy `deptId` mới (ví dụ `VB_DOC_USER` khác `PUBLISHER_ID`) được index ngay cả khi bản publisher đã có — không cần `--force` cho cặp `(fileServiceId, publisherDept)` cũ.
 - `fileContent` khớp Java: Tika `BodyContentHandler` rồi `TextUtils.removeVietnameseAccents` (không uppercase, không xóa khoảng trắng như `searchText` part 3). Search realtime cũng bỏ dấu query nên phải index bản không dấu.
 - Cùng một file index nhiều dept: Tika chỉ chạy **một lần** (cache theo `fileServiceId`).
 - Doc Oracle `IS_DELETE=1` không bị xóa khỏi Solr.

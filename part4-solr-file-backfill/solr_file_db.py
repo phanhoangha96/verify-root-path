@@ -13,6 +13,9 @@ ATTACHMENT_OBJECT_TYPE_DOC_RELATION = 5
 # VB_DOC_RELATION.OBJECT_TYPE: 0 = incoming doc, 1 = outgoing doc (Java DOC_RELATION_OBJECT_TYPE).
 DOC_RELATION_OBJECT_TYPE_INCOMING = 0
 DOC_RELATION_OBJECT_TYPE_OUTGOING = 1
+# VB_DOC_USER.DOC_TYPE (Java DOC_USER_DOC_TYPE): search inbox is per this dept, not publisher.
+DOC_USER_DOC_TYPE_INCOMING = "0"
+DOC_USER_DOC_TYPE_OUTGOING = "1"
 
 
 @dataclass
@@ -574,6 +577,7 @@ def _fetch_extra_depts(
         except Exception as ex:
             if not _is_invalid_identifier(ex):
                 raise
+        _append_doc_user_depts(conn, schema, extra, in_sql, binds, incoming=True)
         return extra
 
     out_process_sql = f"""
@@ -617,7 +621,40 @@ def _fetch_extra_depts(
     except Exception as ex:
         if not _is_invalid_identifier(ex):
             raise
+    _append_doc_user_depts(conn, schema, extra, in_sql, binds, incoming=False)
     return extra
+
+
+def _append_doc_user_depts(
+    conn,
+    schema: str,
+    extra: Dict[str, List[str]],
+    in_sql: str,
+    binds: Dict[str, str],
+    *,
+    incoming: bool,
+) -> None:
+    """Clone FILE docs for inbox depts (VB_DOC_USER), not only publisher/toDept.
+
+    findAllCombined keyword search filters Solr by the logged-in user's dept.
+    Người soạn thảo / người được chuyển can sit in a different dept than PUBLISHER_ID.
+    """
+    sql = f"""
+        SELECT DOC_ID, DEPT_ID
+        FROM {qualify(schema, "VB_DOC_USER")}
+        WHERE DOC_ID IN ({in_sql})
+          AND NVL(IS_DELETE, 0) = 0
+          AND DEPT_ID IS NOT NULL
+          AND DOC_TYPE = :doc_type
+    """
+    query_binds = dict(binds)
+    query_binds["doc_type"] = DOC_USER_DOC_TYPE_INCOMING if incoming else DOC_USER_DOC_TYPE_OUTGOING
+    try:
+        for doc_id, values in _fetch_map(conn, sql, query_binds).items():
+            extra[doc_id].extend(values)
+    except Exception as ex:
+        if not _is_invalid_identifier(ex) and not _is_missing_object(ex):
+            raise
 
 
 def _file_index_row(

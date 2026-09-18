@@ -4,7 +4,7 @@ Giống fat JAR: một file chạy được, **không cài Python** trên server
 
 CLI: Oracle NEW/LEGACY → tải file chính và file `VB_DOC_RELATION` (file-service hoặc disk) → Apache Tika → bỏ dấu tiếng Việt → Solr `fileContent` → Excel/JSON.
 
-Chạy lại **không nhân bản** cùng `fileServiceId` + `deptId` (trừ `--force`). Solr id `{fileServiceId}_{deptId}_file`.
+Chạy lại **không nhân bản** cùng `fileServiceId` + `deptId` (trừ `--force`). Solr id `{fileServiceId}_{deptId}_file`. Outgoing clone thêm `VB_DOC_USER.DEPT_ID` (hộp thư) ngoài `PUBLISHER_ID`.
 
 Máy chạy phải **reach được Oracle, Solr**, và file-service hoặc đĩa file. Cần **Java** cho Tika (không đóng trong binary).
 
