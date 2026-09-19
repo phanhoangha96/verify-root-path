@@ -44,10 +44,9 @@ def normalize_search_value(value: Optional[str]) -> str:
 def normalize_place_list(value: Optional[str], max_token_len: int = 32766) -> str:
     """Normalize each receive-place separately and join with spaces.
 
-    searchText glues everything into one token (Java parity). The dedicated
-    Solr field must not: Lucene rejects a single term over 32766 chars.
-    text_general then indexes each place as its own term; the stored value
-    still has the full list.
+    Field meta la type string (1 term nguyen ven) nen wildcard substring van
+    match xuyen dau cach; gia tri cuoi duoc clip_solr_doc cat o 32766 ky tu
+    (Lucene MAX_TERM_LENGTH).
     """
     if not is_true(value):
         return ""

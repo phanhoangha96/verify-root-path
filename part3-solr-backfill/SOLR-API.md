@@ -433,7 +433,7 @@ curl -sS "$SOLR/$CORE/schema/fieldtypes?wt=json"
 ```bash
 curl -sS -X POST "$SOLR/$CORE/schema?wt=json" \
   -H "Content-Type: application/json" \
-  --data-binary '{"add-field":{"name":"otherReceivePlaces","type":"text_general","indexed":true,"stored":true,"multiValued":false}}'
+  --data-binary '{"add-field":{"name":"otherReceivePlaces","type":"string","indexed":true,"stored":true,"multiValued":false}}'
 ```
 
 ### Sửa field (`replace-field`)
@@ -446,7 +446,7 @@ curl -sS -X POST "$SOLR/$CORE/schema?wt=json" \
   --data-binary '{"replace-field":{"name":"otherReceivePlaces","type":"string","indexed":false,"stored":true,"docValues":false,"multiValued":false}}'
 ```
 
-- `indexed:true` + `text_general` → inverted index (search ô form).
+- `indexed:true` + `string` → inverted index 1 term nguyên vẹn (search ô form bằng wildcard substring, match cả keyword chứa `/` như `5/9`).
 - `indexed:false` + `stored:true` → chỉ lưu, khớp `FieldInfo=NONE`; search qua `searchText`.
 
 ### Xóa field khỏi schema

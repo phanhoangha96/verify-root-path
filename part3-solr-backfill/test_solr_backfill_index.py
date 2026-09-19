@@ -107,11 +107,11 @@ def test_clip_solr_doc() -> None:
         log=warnings.append,
     )
     assert len(doc["searchText"]) == MAX_SOLR_TERM_LENGTH
-    assert doc["otherReceivePlaces"] == places
+    assert len(doc["otherReceivePlaces"]) == MAX_SOLR_TERM_LENGTH
     assert len(doc["quote"]) == MAX_SOLR_DEDICATED_FIELD
     assert doc["bookNumber"] == "123"
     assert "empty" not in doc
-    assert len(warnings) == 2
+    assert len(warnings) == 3
 
 
 def test_binary_split_isolates_bad_docs() -> None:

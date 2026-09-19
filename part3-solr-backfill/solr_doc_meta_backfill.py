@@ -327,7 +327,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             print(f"Pinging Solr {settings.solr_host}/{settings.solr_core} ...", flush=True)
             solr.ping()
-            solr.ensure_text_fields(log=_log)
+            solr.ensure_fields(log=_log)
 
         if args.source in {"ALL", "NEW"}:
             run_new(

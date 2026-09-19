@@ -9,12 +9,15 @@ from base64 import b64encode
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlencode
 
-# Lucene MAX_TERM_LENGTH. searchText is one token (whitespace stripped).
+# Lucene MAX_TERM_LENGTH. Field meta là type string => toàn bộ giá trị là 1 term,
+# mọi field đều phải <= giới hạn này (kể cả otherReceivePlaces).
 MAX_SOLR_TERM_LENGTH = 32766
 # quote / docCode stay one token after normalize — keep them short.
 MAX_SOLR_DEDICATED_FIELD = 4000
-# otherReceivePlaces is tokenized (spaces between places); stored value can be large.
-MAX_SOLR_STORED_FIELD = 1_048_576
+# Field meta dùng type string (1 term nguyên vẹn) để wildcard substring (*5/9*)
+# match xuyên qua '/'; text_general tách token tại '/' nên keyword chứa dấu câu
+# không bao giờ match. Khớp eoffice-solr init-solr-document-schema.sh.
+META_FIELD_TYPE = "string"
 DEDICATED_TEXT_FIELDS = (
     "searchText",
     "docCode",
@@ -46,9 +49,7 @@ def clip_solr_doc(doc: Dict, object_id: str = "", log=None) -> Dict:
         if value in (None, ""):
             continue
         if isinstance(value, str):
-            if key == "otherReceivePlaces":
-                limit = MAX_SOLR_STORED_FIELD
-            elif key in {"docCode", "quote", "outsidePublisherName", "bookNumber"}:
+            if key in {"docCode", "quote", "outsidePublisherName", "bookNumber"}:
                 limit = MAX_SOLR_DEDICATED_FIELD
             else:
                 limit = MAX_SOLR_TERM_LENGTH
@@ -175,10 +176,10 @@ class SolrClient:
         url = f"{self.host}/{self.core}/admin/ping?wt=json"
         self._request("GET", url)
 
-    def ensure_text_fields(self, log=None) -> None:
+    def ensure_fields(self, log=None) -> None:
         for name in DEDICATED_TEXT_FIELDS:
             try:
-                self._ensure_text_field(name)
+                self._ensure_field(name)
             except Exception as ex:
                 if log:
                     log(f"    WARN Solr field {name}: {compact_solr_msg(str(ex))}")
@@ -226,17 +227,17 @@ class SolrClient:
         except urllib.error.URLError as ex:
             raise RuntimeError(f"Solr connection failed {url}: {ex.reason}") from ex
 
-    def _ensure_text_field(self, name: str) -> None:
+    def _ensure_field(self, name: str) -> None:
         spec = {
             "name": name,
-            "type": "text_general",
+            "type": META_FIELD_TYPE,
             "indexed": True,
             "stored": True,
             "multiValued": False,
         }
         existing = self._get_field(name)
         if existing:
-            if str(existing.get("type") or "") == "text_general":
+            if str(existing.get("type") or "") == META_FIELD_TYPE:
                 return
             self._schema_post({"replace-field": spec})
             return
