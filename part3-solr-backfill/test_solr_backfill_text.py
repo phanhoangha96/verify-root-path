@@ -18,6 +18,9 @@ def test_normalize_search_value() -> None:
     assert normalize_search_value("Số 123") == "SO123"
     assert normalize_search_value("test đồng nhất 18/9") == "TESTDONGNHAT18/9"
     assert normalize_search_value("123/QĐ-UBND") == "123/QD-UBND"
+    # Dau cau cung bi xoa de search theo cum khong bi gay boi dau cau trong van ban goc.
+    assert normalize_search_value("mua thu, bảo trì") == "MUATHUBAOTRI"
+    assert normalize_search_value("V/v: mua sắm") == "V/VMUASAM"
     assert normalize_search_value("   ") == ""
 
 

@@ -8,10 +8,7 @@ from typing import Iterable, List, Optional
 
 # Java: Normalizer.NFD + \\p{InCombiningDiacriticalMarks} + đ/Đ
 _COMBINING_MARKS = re.compile(r"[\u0300-\u036f]+")
-# Java: [\\+\\&\\|\\!\\(\\)\\{\\}\\[\\]\\^\"~\\*\\?:]  (keep / and -)
-_SPECIAL_CHARS = re.compile(r'[\\+&|!(){}[\]^"~*?:]')
 _HTML_TAG = re.compile(r"<[^>]+>")
-_WHITESPACE = re.compile(r"\s+")
 _PLACE_SEP = re.compile(r"[,;|/\n\r]+")
 
 
@@ -36,9 +33,18 @@ def remove_vietnamese_tones(value: Optional[str]) -> str:
 
 
 def normalize_search_value(value: Optional[str]) -> str:
+    """Khop eoffice-business DocMetaSolrServiceImpl.normalizeSearchValue va
+    eoffice-solr DocServiceImpl.normalizeSearchPhrase: bo dau, IN HOA, xoa moi
+    ky tu khong phai chu/so (giu / va - cho so ky hieu 18/9, 123/QD-UBND) —
+    khoang trang lan dau cau deu bi xoa de search theo cum (phrase) bang mot
+    wildcard duy nhat.
+    """
     if not is_true(value):
         return ""
-    return _WHITESPACE.sub("", _SPECIAL_CHARS.sub(" ", remove_vietnamese_tones(value))).upper()
+    text = remove_vietnamese_tones(value)
+    # Java [^\p{L}\p{N}/\-]: unicodedata.category "L*"/"N*" tuong duong \p{L}/\p{N}.
+    kept = [ch for ch in text if ch in "/-" or unicodedata.category(ch)[0] in ("L", "N")]
+    return "".join(kept).upper()
 
 
 def normalize_place_list(value: Optional[str], max_token_len: int = 32766) -> str:
