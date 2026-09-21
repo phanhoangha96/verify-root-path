@@ -34,16 +34,20 @@ def remove_vietnamese_tones(value: Optional[str]) -> str:
 
 def normalize_search_value(value: Optional[str]) -> str:
     """Khop eoffice-business DocMetaSolrServiceImpl.normalizeSearchValue va
-    eoffice-solr DocServiceImpl.normalizeSearchPhrase: bo dau, IN HOA, xoa moi
-    ky tu khong phai chu/so (giu / va - cho so ky hieu 18/9, 123/QD-UBND) —
-    khoang trang lan dau cau deu bi xoa de search theo cum (phrase) bang mot
-    wildcard duy nhat.
+    eoffice-solr DocServiceImpl.normalizeSearchPhrase: bo dau, IN HOA, GIU moi
+    ky tu hien thi (chu, so, dau cau, ky hieu %, &, ()...) de search khop dung
+    ky tu nguoi dung nhap. Chi xoa khoang trang (search theo cum bat chap dau
+    cach), ky tu dieu khien (Cc - gay loi transport) va ky tu format vo hinh
+    (Cf - zero-width space, soft hyphen, bidi control pha matching).
+    Ky tu dac biet Lucene duoc eoffice-solr escape bang ClientUtils.escapeQueryChars
+    luc build query nen khong gay loi parse.
     """
     if not is_true(value):
         return ""
     text = remove_vietnamese_tones(value)
-    # Java [^\p{L}\p{N}/\-]: unicodedata.category "L*"/"N*" tuong duong \p{L}/\p{N}.
-    kept = [ch for ch in text if ch in "/-" or unicodedata.category(ch)[0] in ("L", "N")]
+    # Java (?U)[\s\p{Cc}\p{Cf}]+: isspace() tuong duong \s Unicode,
+    # unicodedata.category "Cc"/"Cf" tuong duong \p{Cc}/\p{Cf}.
+    kept = [ch for ch in text if not ch.isspace() and unicodedata.category(ch) not in ("Cc", "Cf")]
     return "".join(kept).upper()
 
 
