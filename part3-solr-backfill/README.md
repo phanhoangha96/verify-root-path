@@ -23,6 +23,8 @@ Ngoài `searchText`, script ghi field riêng (cùng kiểu normalize) để sear
 
 `priorityOrder` là `CATEGORY.ORDER_` theo `PRIORITY_ID`. Keyword ranking: số ký hiệu → số đến → trích yếu → độ khẩn (`ORDER_` cao lên trước) → chỉ đạo → comment/nội dung file.
 
+Nguồn `comment`: `VB_COMMENT` (đến: `OBJECT_TYPE` 1,4; đi: 0) + `ACTION_LOG.COMMENT_` (**chỉ NEW**; đến: `OBJECT_TYPE=1`, đi: `OBJECT_TYPE=0`) — cùng nguồn màn hình lịch sử/comment trên FE (`actionLog/findAllByVbOutgoingDoc`), khớp `DocMetaSolrServiceImpl.collectActionLogComments`.
+
 
 ---
 

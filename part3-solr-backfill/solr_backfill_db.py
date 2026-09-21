@@ -11,6 +11,9 @@ OBJECT_TYPE_OUTGOING = 2
 COMMENT_VB_DI = 0
 COMMENT_VB_DEN = 1
 COMMENT_HO_SO_HDTV = 4
+# Constants.ACTION_LOG_OBJECT_TYPE bên eoffice-business
+ACTION_LOG_VB_DI = 0
+ACTION_LOG_VB_DEN = 1
 
 
 @dataclass
@@ -114,6 +117,47 @@ def _fetch_first_map(conn, sql: str, binds: Dict) -> Dict[str, str]:
     return out
 
 
+def _merge_into(target: Dict[str, List[str]], extra: Dict[str, List[str]]) -> None:
+    for key, values in extra.items():
+        target.setdefault(key, []).extend(values)
+
+
+def _is_missing_object(ex: Exception) -> bool:
+    code = getattr(ex.args[0], "code", None) if ex.args else None
+    return code == 942 or "ORA-00942" in str(ex)
+
+
+def _fetch_action_log_comments(
+    conn,
+    schema: str,
+    ids: Sequence[str],
+    action_log_object_type: int,
+) -> Dict[str, List[str]]:
+    """
+    Lấy comment (ý kiến khi chuyển xử lý/kết thúc/từ chối...) từ ACTION_LOG của
+    văn bản - cùng nguồn dữ liệu với màn hình lịch sử/comment trên FE
+    (actionLog/findAllByVbOutgoingDoc) và logic DocMetaSolrServiceImpl bên
+    eoffice-business. Chỉ áp dụng cho NEW (LEGACY không có bảng ACTION_LOG).
+    """
+    if not ids:
+        return {}
+    a_sql, a_binds = _in_clause("aid", ids)
+    sql = f"""
+        SELECT OBJECT_ID, COMMENT_
+        FROM {qualify(schema, "ACTION_LOG")}
+        WHERE OBJECT_ID IN ({a_sql})
+          AND OBJECT_TYPE = {action_log_object_type}
+          AND COMMENT_ IS NOT NULL
+    """
+    try:
+        return _fetch_map(conn, sql, a_binds)
+    except Exception as ex:
+        if _is_missing_object(ex):
+            print(f"ACTION_LOG not found in schema {schema} - skip action log comments", flush=True)
+            return {}
+        raise
+
+
 def _attach_related(
     conn,
     schema: str,
@@ -121,6 +165,7 @@ def _attach_related(
     *,
     incoming_process_id_col: str,
     incoming_process_table_filter: str,
+    include_action_log: bool,
 ) -> None:
     if not rows:
         return
@@ -148,6 +193,8 @@ def _attach_related(
               AND NVL(IS_DELETE, 0) = 0
         """
         comments = _fetch_map(conn, comment_sql, c_binds)
+        if include_action_log:
+            _merge_into(comments, _fetch_action_log_comments(conn, schema, incoming_ids, ACTION_LOG_VB_DEN))
         p_sql, p_binds = _in_clause("pid", incoming_ids)
         process_sql = f"""
             SELECT {incoming_process_id_col}, NOTE
@@ -171,6 +218,8 @@ def _attach_related(
               AND NVL(IS_DELETE, 0) = 0
         """
         comments = _fetch_map(conn, comment_sql, c_binds)
+        if include_action_log:
+            _merge_into(comments, _fetch_action_log_comments(conn, schema, outgoing_ids, ACTION_LOG_VB_DI))
         p_sql, p_binds = _in_clause("opid", outgoing_ids)
         process_sql = f"""
             SELECT DOC_ID, NOTE
@@ -240,6 +289,7 @@ def iter_new_incoming(
         schema=target.schema,
         incoming_process_id_col="DOC_ID",
         incoming_process_table_filter="AND NVL(IS_DELETE, 0) = 0",
+        include_action_log=True,
     )
 
 
@@ -278,6 +328,7 @@ def iter_new_outgoing(
         schema=target.schema,
         incoming_process_id_col="DOC_ID",
         incoming_process_table_filter="AND NVL(IS_DELETE, 0) = 0",
+        include_action_log=True,
     )
 
 
@@ -312,6 +363,7 @@ def iter_legacy_incoming(
         schema=target.schema,
         incoming_process_id_col="OBJECT_ID",
         incoming_process_table_filter="",
+        include_action_log=False,
     )
 
 
@@ -347,6 +399,7 @@ def iter_legacy_outgoing(
         schema=target.schema,
         incoming_process_id_col="DOC_ID",
         incoming_process_table_filter="AND NVL(IS_DELETE, 0) = 0",
+        include_action_log=False,
     )
 
 
@@ -364,6 +417,7 @@ def _iter_mapped(
     schema: str,
     incoming_process_id_col: str,
     incoming_process_table_filter: str,
+    include_action_log: bool,
 ) -> Iterator[List[DocRow]]:
     # Oracle treats '' as NULL, so "ID > ''" matches nothing. First page uses NULL.
     last_id = None
@@ -448,6 +502,7 @@ def _iter_mapped(
             docs,
             incoming_process_id_col=incoming_process_id_col,
             incoming_process_table_filter=incoming_process_table_filter,
+            include_action_log=include_action_log,
         )
         yield docs
         fetched += len(docs)
