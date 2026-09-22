@@ -31,6 +31,7 @@ class BackfillReport:
     object_type: str = ""
     solr_host: str = ""
     solr_core: str = ""
+    total: int = 0
     scanned: int = 0
     indexed: int = 0
     skipped_missing_dept: int = 0
@@ -40,6 +41,11 @@ class BackfillReport:
     by_key: Dict[str, Dict[str, int]] = field(default_factory=dict)
     skipped_rows: List[IssueRow] = field(default_factory=list)
     error_rows: List[IssueRow] = field(default_factory=list)
+
+    def progress_percent(self) -> float:
+        if self.total <= 0:
+            return 0.0
+        return round(min(100.0, self.scanned * 100.0 / self.total), 1)
 
     def bump(self, source: str, object_type: int, field: str, count: int = 1) -> None:
         key = f"{source}:{object_type}"
@@ -95,12 +101,14 @@ def write_reports(report: BackfillReport, output_dir: Path, stamp: str, output_f
         "object_type": report.object_type,
         "solr_host": report.solr_host,
         "solr_core": report.solr_core,
+        "total": report.total,
         "scanned": report.scanned,
         "indexed": report.indexed,
         "skipped_missing_dept": report.skipped_missing_dept,
         "skipped_empty_search_text": report.skipped_empty_search_text,
         "errors": report.errors,
         "solr_batches": report.solr_batches,
+        "progress_percent": report.progress_percent(),
         "by_key": report.by_key,
         "skipped_truncated": len(report.skipped_rows) >= MAX_DETAIL_ROWS,
         "errors_truncated": len(report.error_rows) >= MAX_DETAIL_ROWS,
@@ -122,12 +130,14 @@ def write_reports(report: BackfillReport, output_dir: Path, stamp: str, output_f
         ("Object_type", report.object_type),
         ("Solr_host", report.solr_host),
         ("Solr_core", report.solr_core),
+        ("Total", report.total),
         ("Scanned", report.scanned),
         ("Indexed", report.indexed),
         ("Skipped_missing_dept", report.skipped_missing_dept),
         ("Skipped_empty_search_text", report.skipped_empty_search_text),
         ("Errors", report.errors),
         ("Solr_batches", report.solr_batches),
+        ("Progress_percent", report.progress_percent()),
     ]:
         overview.append([key, value])
 

@@ -145,6 +145,8 @@ nohup python solr_doc_file_backfill.py --source NEW > file-backfill.log 2>&1 &
 tail -f file-backfill.log
 ```
 
+Log tiến độ dạng: `progress=24.0% docs=1200/5000 scanned=1800 ...` (COUNT theo văn bản; `scanned` vẫn đếm file/attachment).
+
 `--dry-run`: cột Indexed = số Solr doc **sẽ** ghi (mỗi dept một doc).
 
 ---
@@ -158,7 +160,7 @@ Mỗi lần chạy tạo:
 
 | Sheet | Nội dung |
 |-------|----------|
-| `Overview` | scanned / indexed / skipped / errors |
+| `Overview` | total / scanned / progress_percent / indexed / skipped / errors |
 | `By_source` | NEW vs LEGACY × incoming (1) / outgoing (2) |
 | `Skipped` | thiếu attachment / dept / file, content rỗng, format Tika không hỗ trợ (RAR5), đã index (tối đa 20_000) |
 | `Errors` | tải file / Tika / ghi Solr / FATAL |

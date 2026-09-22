@@ -42,6 +42,24 @@ def qualify(schema: str, table: str) -> str:
     return f"{schema}.{table}" if schema else table
 
 
+def count_active_docs(conn, schema: str, table: str, tenant_filter: str = "", limit: int = 0) -> int:
+    """COUNT non-deleted docs; optional TENANT_CODE filter. Applies limit if > 0."""
+    qualified = qualify(schema, table)
+    tenant_sql = "AND TENANT_CODE = :tenant_code" if tenant_filter else ""
+    sql = f"""
+        SELECT COUNT(*) FROM {qualified}
+        WHERE NVL(IS_DELETE, 0) = 0
+        {tenant_sql}
+    """
+    binds = {"tenant_code": tenant_filter} if tenant_filter else {}
+    with conn.cursor() as cur:
+        cur.execute(sql, binds)
+        count = int(cur.fetchone()[0])
+    if limit > 0:
+        return min(count, limit)
+    return count
+
+
 def connect(target: OracleTarget):
     import oracledb
 

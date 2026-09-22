@@ -119,6 +119,8 @@ nohup python solr_doc_meta_backfill.py --source NEW > backfill.log 2>&1 &
 tail -f backfill.log
 ```
 
+Log tiến độ dạng: `progress=24.0% scanned=1200/5000 ...` (COUNT tổng trước khi chạy).
+
 `--dry-run`: cột Indexed = số doc **sẽ** ghi Solr.
 
 ---
@@ -132,7 +134,7 @@ Mỗi lần chạy tạo:
 
 | Sheet | Nội dung |
 |-------|----------|
-| `Overview` | scanned / indexed / skipped / errors, Solr host |
+| `Overview` | total / scanned / progress_percent / indexed / skipped / errors, Solr host |
 | `By_source` | NEW vs LEGACY × incoming (1) / outgoing (2) |
 | `Skipped` | thiếu `toDeptId`/`publisherId`, hoặc `searchText` rỗng (tối đa 20_000) |
 | `Errors` | lỗi ghi Solr / FATAL (tối đa 20_000) |

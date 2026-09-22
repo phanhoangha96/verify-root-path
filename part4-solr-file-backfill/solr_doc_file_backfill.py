@@ -40,6 +40,7 @@ from solr_file_db import (
     OBJECT_TYPE_OUTGOING,
     FileIndexRow,
     connect,
+    count_active_docs,
     is_true,
     iter_legacy_incoming,
     iter_legacy_outgoing,
@@ -278,11 +279,12 @@ def _run_stream(
     dry_run: bool,
     skip_existing: bool,
 ) -> None:
-    total = 0
+    stream_scanned = 0
     started = time.monotonic()
     skipped = lambda: report.skipped_total()
     for page in pages:
-        total += len(page)
+        stream_scanned += len(page)
+        docs_in_page = len({row.doc_id for row in page})
         existing = _existing_for_page(solr, page, skip_existing and not dry_run)
         process_batch(
             page,
@@ -296,13 +298,16 @@ def _run_stream(
             skip_existing and not dry_run,
             existing,
         )
+        report.docs_processed += docs_in_page
         elapsed = time.monotonic() - started
         print(
-            f"  {label}: scanned={total} indexed={report.indexed} "
-            f"skipped={skipped()} errors={report.errors} elapsed={elapsed:.1f}s",
+            f"  {label}: progress={report.progress_percent()}% "
+            f"docs={report.docs_processed}/{report.total} scanned={report.scanned} "
+            f"indexed={report.indexed} skipped={skipped()} errors={report.errors} "
+            f"elapsed={elapsed:.1f}s",
             flush=True,
         )
-    if total == 0:
+    if stream_scanned == 0:
         print(f"  {label}: scanned=0 (no rows from Oracle)", flush=True)
 
 
@@ -310,6 +315,37 @@ def _wanted(object_type_arg: str) -> List[int]:
     if object_type_arg == "ALL":
         return [OBJECT_TYPE_INCOMING, OBJECT_TYPE_OUTGOING]
     return [int(object_type_arg)]
+
+
+def estimate_total(
+    settings: SolrFileBackfillSettings,
+    source: str,
+    object_types: List[int],
+    limit: int,
+    tenant_filter: str,
+) -> int:
+    total = 0
+    if source in {"ALL", "NEW"}:
+        for target in settings.new_targets:
+            conn = connect(target)
+            try:
+                if OBJECT_TYPE_INCOMING in object_types:
+                    total += count_active_docs(conn, target.schema, "VB_INCOMING_DOC", tenant_filter, limit)
+                if OBJECT_TYPE_OUTGOING in object_types:
+                    total += count_active_docs(conn, target.schema, "VB_OUTGOING_DOC", tenant_filter, limit)
+            finally:
+                conn.close()
+    if source in {"ALL", "LEGACY"}:
+        target = settings.legacy
+        conn = connect(target)
+        try:
+            if OBJECT_TYPE_INCOMING in object_types:
+                total += count_active_docs(conn, target.schema, "V_VB_INCOMING_DOC_V2", "", limit)
+            if OBJECT_TYPE_OUTGOING in object_types:
+                total += count_active_docs(conn, target.schema, "VB_OUTGOING_DOC", "", limit)
+        finally:
+            conn.close()
+    return total
 
 
 def run_new(
@@ -527,6 +563,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 settings.file_storage_roots,
             )
 
+        report.total = estimate_total(
+            settings, args.source, object_types, args.limit, args.tenant_code.strip()
+        )
+        print(f"Estimated total docs to scan: {report.total}", flush=True)
+
         if args.source in {"ALL", "NEW"}:
             run_new(
                 settings,
@@ -569,7 +610,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         paths = write_reports(report, settings.output_dir, stamp, settings.output_file)
         skipped = report.skipped_total()
         print(
-            f"Done. scanned={report.scanned} indexed={report.indexed} "
+            f"Done. progress={report.progress_percent()}% docs={report.docs_processed}/{report.total} "
+            f"scanned={report.scanned} indexed={report.indexed} "
             f"skipped={skipped} errors={report.errors} duration={report.duration_seconds}s",
             flush=True,
         )
