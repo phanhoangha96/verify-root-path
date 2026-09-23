@@ -57,8 +57,12 @@ python export_missing.py
 # Chỉ dump CSV từ Oracle (không SSH)
 python export_missing.py --skip-scan
 
-# Reuse CSV đã dump sẵn
+# Reuse CSV đã dump sẵn (bỏ Oracle; chỉ scan plocate)
 python export_missing.py --input-csv ./output/missing-export/<jobId>/input.csv
+# Windows PowerShell ví dụ:
+# python export_missing.py --input-csv .\output\missing-export\aa886dfa05784e35\input.csv
+
+# Hoặc set MISSING_EXPORT_CSV_PATH trong .env trỏ tới file đó rồi: python export_missing.py
 
 # Ép format
 python export_missing.py --format csv
@@ -88,6 +92,35 @@ Report mặc định:
 | `MISSING_EXPORT_RECONNECT_EVERY` | Reconnect SSH sau N check | `50000` |
 | `MISSING_EXPORT_SEARCH_BY_FILE_NAME` | `plocate -b` basename (giữ `false` cho job lớn) | `false` |
 | `OUTPUT_DIR` | Thư mục report | `./output` |
+
+## Reindex plocate trên file server
+
+Chạy **trên server** (SSH root), trước khi scan nếu index cũ / thiếu file mới:
+
+```bash
+# DB đúng với REMOTE_STORAGE_PLOCATE_DB trong .env
+DB=/var/lib/plocate/voffice.db
+
+# Index các root vật lý trên server (khớp REMOTE_STORAGE_ROOT_FOLDERS)
+# Host layout: /data/voffice/{u02,u03,u04,u05,Y2026}/...
+updatedb -o "$DB" --require-visibility 0 \
+  -U /data/voffice/u02/data1/voffice/Upload \
+  -U /data/voffice/u03/data1/voffice/Upload \
+  -U /data/voffice/u04/data1/voffice/Upload \
+  -U /data/voffice/u05/data1/voffice/Upload \
+  -U /data/voffice/Y2026 \
+  -U /data
+
+# Kiểm tra
+ls -lh "$DB"
+plocate -d "$DB" -l 5 -- 'Upload'
+```
+
+Ghi chú:
+
+- Binary indexer thường là `updatedb` của package `plocate` (một số OS tên `updatedb.plocate`).
+- `--require-visibility 0`: index cả file không world-readable (cần khi chạy plocate với quyền phù hợp).
+- Job lớn: chạy reindex xong rồi mới `python export_missing.py` (index lệch → `missing == checked`).
 
 ## Lưu ý vận hành
 

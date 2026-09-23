@@ -80,9 +80,8 @@ def load_settings(*, require_oracle: bool = True, require_ssh: bool = True) -> S
         plocate_db=os.getenv("REMOTE_STORAGE_PLOCATE_DB", "/var/lib/plocate/voffice.db"),
         root_folders=_csv(
             "REMOTE_STORAGE_ROOT_FOLDERS",
-            "/data/u02/data1/voffice/Upload,/data/u02/data2/voffice/Upload,"
-            "/data/u03/data1/voffice/Upload,/data/u03/data1/voffice/Upload/Upload,"
-            "/data/u04/data1/voffice/Upload,/data/u05/data1/voffice/Upload",
+            "/data/voffice/u02/data1/voffice/Upload,/data/voffice/u03/data1/voffice/Upload,"
+            "/data/voffice/u04/data1/voffice/Upload,/data/voffice/u05/data1/voffice/Upload,/data",
         ),
         plocate_limit=_int("PLOCATE_LIMIT", 32),
         missing_export_csv_path=os.getenv("MISSING_EXPORT_CSV_PATH", "") or "",

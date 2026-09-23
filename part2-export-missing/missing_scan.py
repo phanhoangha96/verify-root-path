@@ -41,6 +41,7 @@ def scan_missing(
     batch: List[Tuple[str, str]] = []
     since_throttle = 0
     since_reconnect = 0
+    scan_started = time.monotonic()
 
     with missing_csv.open("w", encoding="utf-8", newline="") as out:
         out.write("path,fileName\n")
@@ -86,7 +87,8 @@ def scan_missing(
                 if stats.checked % 10000 == 0:
                     out.flush()
                     print(
-                        f"  missing scan progress: checked={stats.checked} missing={stats.missing}",
+                        f"  missing scan progress: checked={stats.checked} "
+                        f"missing={stats.missing} {_format_scan_timing(scan_started, stats.checked)}",
                         flush=True,
                     )
                 batch = []
@@ -113,10 +115,27 @@ def scan_missing(
 
     print(
         f"Missing scan completed: checked={stats.checked} missing={stats.missing} "
-        f"file={missing_csv}",
+        f"{_format_scan_timing(scan_started, stats.checked)} file={missing_csv}",
         flush=True,
     )
     return stats
+
+
+def _format_scan_timing(started: float, checked: int) -> str:
+    elapsed = max(0.0, time.monotonic() - started)
+    rate = (checked / elapsed) if elapsed > 0 else 0.0
+    return f"elapsed={_format_duration(elapsed)} rate={rate:.1f}/s"
+
+
+def _format_duration(seconds: float) -> str:
+    total = int(seconds)
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
 
 
 def _maybe_reconnect(

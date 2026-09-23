@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 import uuid
@@ -57,7 +58,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    settings = load_settings(require_oracle=True, require_ssh=not args.skip_scan)
+    reuse_csv = _will_reuse_input_csv(args.input_csv)
+    settings = load_settings(
+        require_oracle=not reuse_csv,
+        require_ssh=not args.skip_scan,
+    )
     work_dir = settings.missing_export_work_dir
     work_dir.mkdir(parents=True, exist_ok=True)
     job_id = uuid.uuid4().hex[:16]
@@ -67,6 +72,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     input_csv = _resolve_input_csv(settings, args.input_csv, job_dir)
     print(f"Job dir: {job_dir.resolve()}", flush=True)
     print(f"Input CSV: {input_csv.resolve()} (rows={count_csv_data_rows(input_csv)})", flush=True)
+    print(
+        f"Reuse next run (skip Oracle): python export_missing.py --input-csv {input_csv}",
+        flush=True,
+    )
 
     if args.skip_scan:
         print("Skip scan (--skip-scan). Done.", flush=True)
@@ -92,6 +101,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     print(f"Raw missing CSV kept at: {missing_csv.resolve()}", flush=True)
     return 0
+
+
+def _will_reuse_input_csv(cli_input: str) -> bool:
+    """True when Oracle dump will be skipped (CLI path or existing MISSING_EXPORT_CSV_PATH)."""
+    if cli_input and cli_input.strip():
+        return Path(cli_input.strip()).is_file()
+    configured = (os.getenv("MISSING_EXPORT_CSV_PATH") or "").strip()
+    if not configured:
+        return False
+    path = Path(configured)
+    return path.is_file() and path.stat().st_size > 0
 
 
 def _resolve_input_csv(settings, cli_input: str, job_dir: Path) -> Path:
