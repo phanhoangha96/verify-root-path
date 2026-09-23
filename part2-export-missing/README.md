@@ -64,6 +64,11 @@ python export_missing.py --input-csv ./output/missing-export/<jobId>/input.csv
 
 # Hoặc set MISSING_EXPORT_CSV_PATH trong .env trỏ tới file đó rồi: python export_missing.py
 
+# Resume job bị cắt SSH (đọc scan_checkpoint.json, append missing.csv)
+python export_missing.py --resume ./output/missing-export/<jobId>
+# Job cũ chưa có checkpoint: lấy N từ dòng progress cuối (checked=N)
+python export_missing.py --resume ./output/missing-export/<jobId> --skip-checked 930000 --input-csv ./path/to/input.csv
+
 # Ép format
 python export_missing.py --format csv
 python export_missing.py --format xlsx
@@ -73,7 +78,7 @@ Report mặc định:
 
 - `output/missing-files_YYYYMMDD_HHMMSS.xlsx` nếu số missing ≤ 1_048_575
 - ngược lại → `.csv`
-- Raw `missing.csv` giữ trong `MISSING_EXPORT_WORK_DIR/<jobId>/`
+- Raw `missing.csv` + `scan_checkpoint.json` giữ trong `MISSING_EXPORT_WORK_DIR/<jobId>/`
 
 ## Config (`.env`)
 
@@ -90,8 +95,33 @@ Report mặc định:
 | `MISSING_EXPORT_THROTTLE_EVERY` | Pause sau mỗi N check | `500` |
 | `MISSING_EXPORT_THROTTLE_PAUSE_MS` | Thời gian pause (ms) | `200` |
 | `MISSING_EXPORT_RECONNECT_EVERY` | Reconnect SSH sau N check | `50000` |
+| `MISSING_EXPORT_RETRY_ATTEMPTS` | Số lần retry khi plocate/SSH lỗi | `3` |
+| `MISSING_EXPORT_RETRY_BACKOFF_MS` | Backoff giữa các lần retry (× attempt) | `500` |
 | `MISSING_EXPORT_SEARCH_BY_FILE_NAME` | `plocate -b` basename (giữ `false` cho job lớn) | `false` |
 | `OUTPUT_DIR` | Thư mục report | `./output` |
+
+## Resume sau khi mất SSH
+
+Mỗi batch thành công ghi `scan_checkpoint.json` (`checked`, `missing`, `input_csv`).
+
+```bash
+# Job mới (có checkpoint): resume đúng job dir vừa crash
+python export_missing.py --resume ./output/missing-export/<jobId>
+
+# Job cũ (chưa có checkpoint): dùng checked từ log progress
+python export_missing.py --resume ./output/missing-export/<jobId> \
+  --skip-checked 930000 \
+  --input-csv ./output/missing-export/<otherJob>/input.csv
+```
+
+Gợi ý `.env` khi SSH hay bị drop:
+
+```env
+MISSING_EXPORT_BATCH_SIZE=100
+MISSING_EXPORT_RECONNECT_EVERY=10000
+MISSING_EXPORT_RETRY_ATTEMPTS=10
+MISSING_EXPORT_RETRY_BACKOFF_MS=5000
+```
 
 ## Reindex plocate trên file server
 
@@ -126,4 +156,4 @@ Ghi chú:
 
 - Job **read-only** trên server file: chỉ `plocate`, không `stat`/`get`/`put`/xóa.
 - Cần `plocate` + DB index (`REMOTE_STORAGE_PLOCATE_DB`, thường `/var/lib/plocate/voffice.db`).
-- Job lớn có thể chạy nhiều giờ.
+- Job lớn có thể chạy nhiều giờ; nếu SSH drop → `--resume` (không cần quét lại từ đầu).

@@ -40,6 +40,13 @@ class PlocateClient:
             self._client.close()
             self._client = None
 
+    @property
+    def connected(self) -> bool:
+        if self._client is None:
+            return False
+        transport = self._client.get_transport()
+        return transport is not None and transport.is_active()
+
     def __enter__(self) -> "PlocateClient":
         self.connect()
         return self
@@ -51,7 +58,7 @@ class PlocateClient:
         """Return absolute matched path (or None) for each relative path, same order."""
         if not relative_paths:
             return []
-        if self._client is None:
+        if not self.connected:
             raise RuntimeError("SSH client is not connected")
 
         command = self._build_batch_command()

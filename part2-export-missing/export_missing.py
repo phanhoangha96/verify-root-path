@@ -12,6 +12,8 @@ Usage:
   python export_missing.py
   python export_missing.py --format csv
   python export_missing.py --input-csv ./output/missing-export/input.csv
+  python export_missing.py --resume ./output/missing-export/<jobId>
+  python export_missing.py --resume ./output/missing-export/<jobId> --skip-checked 930000
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 _PART_DIR = Path(__file__).resolve().parent
 if str(_PART_DIR) not in sys.path:
@@ -32,7 +34,7 @@ if str(_PART_DIR) not in sys.path:
 from config import load_settings
 from db import count_csv_data_rows, write_all_attachments_csv
 from missing_report import choose_output_format, write_missing_excel
-from missing_scan import scan_missing
+from missing_scan import load_checkpoint, scan_missing
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -44,6 +46,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         default="",
         help="Reuse existing path,fileName CSV (skip Oracle dump). "
         "Overrides MISSING_EXPORT_CSV_PATH when set.",
+    )
+    parser.add_argument(
+        "--resume",
+        default="",
+        help="Resume an interrupted job dir (reads scan_checkpoint.json, appends missing.csv).",
+    )
+    parser.add_argument(
+        "--skip-checked",
+        type=int,
+        default=-1,
+        help="Override resume skip count (rows already checked). "
+        "Use when checkpoint is missing: --resume <jobDir> --skip-checked 930000",
     )
     parser.add_argument(
         "--format",
@@ -58,22 +72,44 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    reuse_csv = _will_reuse_input_csv(args.input_csv)
+    resume_dir = (args.resume or "").strip()
+    if resume_dir and args.skip_scan:
+        raise SystemExit("Cannot combine --resume with --skip-scan")
+
+    reuse_csv = _will_reuse_input_csv(args.input_csv) or bool(resume_dir)
     settings = load_settings(
         require_oracle=not reuse_csv,
         require_ssh=not args.skip_scan,
     )
     work_dir = settings.missing_export_work_dir
     work_dir.mkdir(parents=True, exist_ok=True)
-    job_id = uuid.uuid4().hex[:16]
-    job_dir = work_dir / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
 
-    input_csv = _resolve_input_csv(settings, args.input_csv, job_dir)
+    if resume_dir:
+        job_dir, input_csv, skip_checked = _resolve_resume(
+            Path(resume_dir),
+            cli_input=args.input_csv,
+            skip_checked_override=args.skip_checked,
+        )
+    else:
+        job_id = uuid.uuid4().hex[:16]
+        job_dir = work_dir / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+        input_csv = _resolve_input_csv(settings, args.input_csv, job_dir)
+        skip_checked = max(0, args.skip_checked) if args.skip_checked >= 0 else 0
+
     print(f"Job dir: {job_dir.resolve()}", flush=True)
-    print(f"Input CSV: {input_csv.resolve()} (rows={count_csv_data_rows(input_csv)})", flush=True)
+    print(
+        f"Input CSV: {input_csv.resolve()} (rows={count_csv_data_rows(input_csv)})",
+        flush=True,
+    )
+    if skip_checked:
+        print(f"Resume skip_checked={skip_checked}", flush=True)
     print(
         f"Reuse next run (skip Oracle): python export_missing.py --input-csv {input_csv}",
+        flush=True,
+    )
+    print(
+        f"Resume if interrupted: python export_missing.py --resume {job_dir}",
         flush=True,
     )
 
@@ -82,7 +118,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     missing_csv = job_dir / "missing.csv"
-    stats = scan_missing(settings, input_csv, missing_csv)
+    stats = scan_missing(
+        settings,
+        input_csv,
+        missing_csv,
+        skip_checked=skip_checked,
+    )
 
     fmt = choose_output_format(stats.missing, "" if args.format == "auto" else args.format)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -101,6 +142,67 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     print(f"Raw missing CSV kept at: {missing_csv.resolve()}", flush=True)
     return 0
+
+
+def _resolve_resume(
+    job_dir: Path,
+    *,
+    cli_input: str,
+    skip_checked_override: int,
+) -> Tuple[Path, Path, int]:
+    job_dir = job_dir.resolve()
+    if not job_dir.is_dir():
+        raise SystemExit(f"Resume job dir not found: {job_dir}")
+
+    checkpoint = load_checkpoint(job_dir)
+    if checkpoint is not None and checkpoint.status == "completed":
+        raise SystemExit(
+            f"Job already completed (checked={checkpoint.checked}, "
+            f"missing={checkpoint.missing}): {job_dir}"
+        )
+
+    if skip_checked_override >= 0:
+        skip_checked = skip_checked_override
+    elif checkpoint is not None:
+        skip_checked = checkpoint.checked
+    else:
+        raise SystemExit(
+            f"No {job_dir / 'scan_checkpoint.json'} found. "
+            "Pass --skip-checked N from the last progress line "
+            "(e.g. checked=930000 → --skip-checked 930000)."
+        )
+
+    if cli_input and cli_input.strip():
+        input_csv = Path(cli_input.strip())
+    elif checkpoint is not None and checkpoint.input_csv:
+        input_csv = Path(checkpoint.input_csv)
+    else:
+        sibling = job_dir / "input.csv"
+        if sibling.is_file():
+            input_csv = sibling
+        else:
+            raise SystemExit(
+                "Cannot resolve input CSV for resume. Pass --input-csv <path>."
+            )
+
+    if not input_csv.is_file():
+        raise SystemExit(f"Input CSV not found for resume: {input_csv}")
+
+    missing_csv = job_dir / "missing.csv"
+    if skip_checked > 0 and not missing_csv.is_file():
+        print(
+            f"Warning: missing.csv not found in {job_dir}; "
+            "will create new file (previous missing rows lost).",
+            flush=True,
+        )
+
+    print(
+        f"Resume job dir: {job_dir} (checkpoint checked={skip_checked}"
+        + (f", status={checkpoint.status}" if checkpoint else ", no checkpoint file")
+        + ")",
+        flush=True,
+    )
+    return job_dir, input_csv, skip_checked
 
 
 def _will_reuse_input_csv(cli_input: str) -> bool:
