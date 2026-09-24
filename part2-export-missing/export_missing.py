@@ -14,6 +14,7 @@ Usage:
   python export_missing.py --input-csv ./output/missing-export/input.csv
   python export_missing.py --resume ./output/missing-export/<jobId>
   python export_missing.py --resume ./output/missing-export/<jobId> --skip-checked 930000
+  python export_missing.py --export-only ./output/missing-export/<jobId>
 """
 
 from __future__ import annotations
@@ -70,11 +71,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         action="store_true",
         help="Only dump Oracle → input CSV (no plocate).",
     )
+    parser.add_argument(
+        "--export-only",
+        default="",
+        help="Only rebuild report from an existing job dir missing.csv (no Oracle/SSH scan).",
+    )
     args = parser.parse_args(argv)
 
     resume_dir = (args.resume or "").strip()
+    export_only_dir = (args.export_only or "").strip()
     if resume_dir and args.skip_scan:
         raise SystemExit("Cannot combine --resume with --skip-scan")
+    if export_only_dir and (resume_dir or args.skip_scan):
+        raise SystemExit("Cannot combine --export-only with --resume/--skip-scan")
+
+    if export_only_dir:
+        return _export_only_report(
+            Path(export_only_dir),
+            format_arg="" if args.format == "auto" else args.format,
+        )
 
     reuse_csv = _will_reuse_input_csv(args.input_csv) or bool(resume_dir)
     settings = load_settings(
@@ -125,23 +140,71 @@ def main(argv: Optional[List[str]] = None) -> int:
         skip_checked=skip_checked,
     )
 
-    fmt = choose_output_format(stats.missing, "" if args.format == "auto" else args.format)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    settings.output_dir.mkdir(parents=True, exist_ok=True)
-
-    if fmt == "csv":
-        out = settings.output_dir / f"missing-files_{stamp}.csv"
-        shutil.copyfile(missing_csv, out)
-    else:
-        out = settings.output_dir / f"missing-files_{stamp}.xlsx"
-        write_missing_excel(missing_csv, out)
-
+    out = _write_report(
+        missing_csv,
+        missing_count=stats.missing,
+        format_arg="" if args.format == "auto" else args.format,
+        output_dir=settings.output_dir,
+    )
     print(
         f"Done. checked={stats.checked} missing={stats.missing} report={out.resolve()}",
         flush=True,
     )
     print(f"Raw missing CSV kept at: {missing_csv.resolve()}", flush=True)
     return 0
+
+
+def _export_only_report(job_dir: Path, *, format_arg: str) -> int:
+    """Rebuild CSV/XLSX report from an already-finished job (no rescan)."""
+    job_dir = job_dir.resolve()
+    missing_csv = job_dir / "missing.csv"
+    if not missing_csv.is_file():
+        raise SystemExit(f"missing.csv not found in job dir: {job_dir}")
+
+    settings = load_settings(require_oracle=False, require_ssh=False)
+    missing_count = count_csv_data_rows(missing_csv)
+    print(f"Export-only from {job_dir} (missing rows={missing_count})", flush=True)
+    out = _write_report(
+        missing_csv,
+        missing_count=missing_count,
+        format_arg=format_arg,
+        output_dir=settings.output_dir,
+    )
+    print(f"Done. missing={missing_count} report={out.resolve()}", flush=True)
+    print(f"Raw missing CSV: {missing_csv.resolve()}", flush=True)
+    return 0
+
+
+def _write_report(
+    missing_csv: Path,
+    *,
+    missing_count: int,
+    format_arg: str,
+    output_dir: Path,
+) -> Path:
+    fmt = choose_output_format(missing_count, format_arg)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if fmt == "csv":
+        out = output_dir / f"missing-files_{stamp}.csv"
+        shutil.copyfile(missing_csv, out)
+        return out
+
+    out = output_dir / f"missing-files_{stamp}.xlsx"
+    try:
+        write_missing_excel(missing_csv, out)
+        return out
+    except Exception as exc:  # noqa: BLE001 — fall back so scan result is never lost
+        print(f"Excel export failed ({exc}); falling back to CSV.", flush=True)
+        if out.exists():
+            try:
+                out.unlink()
+            except OSError:
+                pass
+        csv_out = output_dir / f"missing-files_{stamp}.csv"
+        shutil.copyfile(missing_csv, csv_out)
+        return csv_out
 
 
 def _resolve_resume(

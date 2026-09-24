@@ -69,6 +69,10 @@ python export_missing.py --resume ./output/missing-export/<jobId>
 # Job cũ chưa có checkpoint: lấy N từ dòng progress cuối (checked=N)
 python export_missing.py --resume ./output/missing-export/<jobId> --skip-checked 930000 --input-csv ./path/to/input.csv
 
+# Chỉ xuất lại report từ missing.csv đã có (không scan lại)
+python export_missing.py --export-only ./output/missing-export/<jobId>
+python export_missing.py --export-only ./output/missing-export/<jobId> --format csv
+
 # Ép format
 python export_missing.py --format csv
 python export_missing.py --format xlsx

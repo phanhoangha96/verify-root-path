@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import List, Tuple
 
@@ -10,6 +11,20 @@ from openpyxl import Workbook
 from db import _split_csv_line
 
 EXCEL_MAX_DATA_ROWS = 1_048_575
+
+# Excel/XML disallow most C0 control chars (openpyxl raises IllegalCharacterError).
+# Keep tab/LF/CR; strip the rest.
+_ILLEGAL_EXCEL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def sanitize_excel_text(value: object) -> str:
+    """Remove characters that Excel worksheets cannot store."""
+    if value is None:
+        return ""
+    text = str(value)
+    if not text:
+        return ""
+    return _ILLEGAL_EXCEL_CHARS.sub("", text)
 
 
 def write_missing_excel(missing_csv: Path, output_xlsx: Path) -> Path:
@@ -29,8 +44,8 @@ def write_missing_excel(missing_csv: Path, output_xlsx: Path) -> Path:
             if not line.strip():
                 continue
             parts = _split_csv_line(line.rstrip("\n\r"))
-            path = parts[0] if parts else ""
-            name = parts[1] if len(parts) > 1 else ""
+            path = sanitize_excel_text(parts[0] if parts else "")
+            name = sanitize_excel_text(parts[1] if len(parts) > 1 else "")
             sheet.append([row_index, path, name])
             row_index += 1
             if row_index - 1 > EXCEL_MAX_DATA_ROWS:
