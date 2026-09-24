@@ -30,11 +30,15 @@ def csv_escape(value: Optional[str]) -> str:
 def write_all_attachments_csv(settings: Settings, csv_file: Path) -> int:
     """
     Stream FILE_PATH,FILE_NAME from LEGACY.VB_ATTACHMENT → CSV.
-    Equivalent to migration-service VbAttachmentMissingExportWriter.
+
+    Dedupes by standardized (path, fileName): VB_ATTACHMENT often has many IDs
+    pointing at the same physical file, which previously inflated input.csv and
+    the missing report.
     """
     schema = settings.oracle_schema
     table = f"{schema}.VB_ATTACHMENT"
-    sql = f"SELECT FILE_PATH, FILE_NAME FROM {table}"
+    # DISTINCT reduces transfer; Python set still needed after path standardize.
+    sql = f"SELECT DISTINCT FILE_PATH, FILE_NAME FROM {table}"
     if settings.exclude_deleted:
         sql += " WHERE NVL(IS_DELETE, 0) = 0"
         print("  Oracle filter: NVL(IS_DELETE, 0) = 0", flush=True)
@@ -47,7 +51,10 @@ def write_all_attachments_csv(settings: Settings, csv_file: Path) -> int:
         password=settings.oracle_password,
         dsn=settings.oracle_dsn,
     )
-    count = 0
+    unique_count = 0
+    raw_count = 0
+    duplicate_skipped = 0
+    seen: set[Tuple[str, str]] = set()
     try:
         with conn.cursor() as cur:
             cur.arraysize = 500
@@ -58,20 +65,35 @@ def write_all_attachments_csv(settings: Settings, csv_file: Path) -> int:
             with csv_file.open("w", encoding="utf-8", newline="") as writer:
                 writer.write("path,fileName\n")
                 for file_path, file_name in cur:
+                    raw_count += 1
                     path = standardize_file_path(
                         str(file_path) if file_path is not None else None
                     )
                     name = "" if file_name is None else str(file_name)
+                    key = (path, name)
+                    if key in seen:
+                        duplicate_skipped += 1
+                        continue
+                    seen.add(key)
                     writer.write(f"{csv_escape(path)},{csv_escape(name)}\n")
-                    count += 1
-                    if count % 10000 == 0:
+                    unique_count += 1
+                    if unique_count % 10000 == 0:
                         writer.flush()
-                        print(f"  Writing attachment CSV progress: rows={count}", flush=True)
+                        print(
+                            f"  Writing attachment CSV progress: "
+                            f"unique={unique_count} raw={raw_count} "
+                            f"dupes_skipped={duplicate_skipped}",
+                            flush=True,
+                        )
                 writer.flush()
     finally:
         conn.close()
-    print(f"Finished writing attachment CSV: rows={count}, file={csv_file}", flush=True)
-    return count
+    print(
+        f"Finished writing attachment CSV: unique={unique_count} "
+        f"raw={raw_count} dupes_skipped={duplicate_skipped} file={csv_file}",
+        flush=True,
+    )
+    return unique_count
 
 
 def count_csv_data_rows(csv_file: Path) -> int:

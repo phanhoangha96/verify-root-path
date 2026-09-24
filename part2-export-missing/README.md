@@ -80,9 +80,32 @@ python export_missing.py --format xlsx
 
 Report mặc định:
 
-- `output/missing-files_YYYYMMDD_HHMMSS.xlsx` nếu số missing ≤ 1_048_575
+- `output/missing-files_YYYYMMDD_HHMMSS.xlsx` nếu số **unique** missing ≤ 1_048_575
 - ngược lại → `.csv`
 - Raw `missing.csv` + `scan_checkpoint.json` giữ trong `MISSING_EXPORT_WORK_DIR/<jobId>/`
+
+### Excel sheets
+
+| Sheet | Nội dung |
+|-------|----------|
+| **Summary** | Tổng input rows, unique files, missing/found, dupes skipped, elapsed, rate, đường dẫn job |
+| **Missing files** | Danh sách **unique** `(path, fileName)` — không còn trùng theo nhiều ID `VB_ATTACHMENT` |
+
+CSV output cũng dedupe theo `(path, fileName)` (có dòng comment `# ...` summary phía trên).
+
+### Dedup
+
+`VB_ATTACHMENT` thường có nhiều ID trỏ cùng 1 file → trước đây `input.csv` / report bị trùng path+filename.
+
+- Dump Oracle: `SELECT DISTINCT` + dedupe sau khi standardize path
+- Scan: bỏ qua `(path, fileName)` đã check (kể cả khi reuse CSV cũ còn trùng)
+- Report: sheet Missing files / CSV luôn aggregate theo `(path, fileName)`
+
+Job cũ đã có `missing.csv` trùng: chạy lại report không cần scan:
+
+```bash
+python export_missing.py --export-only ./output/missing-export/<jobId>
+```
 
 ## Config (`.env`)
 

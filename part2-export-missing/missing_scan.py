@@ -21,6 +21,10 @@ CHECKPOINT_NAME = "scan_checkpoint.json"
 class ScanStats:
     checked: int = 0
     missing: int = 0
+    input_rows: int = 0
+    unique_files: int = 0
+    duplicate_input_skipped: int = 0
+    elapsed_seconds: float = 0.0
 
 
 @dataclass
@@ -108,6 +112,8 @@ def scan_missing(
     scan_started = time.monotonic()
     skip_remaining = skip_checked
     checked_at_start = skip_checked
+    # Skip duplicate (path, fileName) so reused input.csv still scans each file once.
+    seen_keys: set[Tuple[str, str]] = set()
 
     open_mode = "a" if resume and missing_csv.is_file() else "w"
     with missing_csv.open(open_mode, encoding="utf-8", newline="") as out:
@@ -140,9 +146,36 @@ def scan_missing(
             )
 
             for path, file_name in iter_csv_path_filename(input_csv):
+                stats.input_rows += 1
                 if skip_remaining > 0:
                     skip_remaining -= 1
+                    # Remember keys from already-checked rows so resume does not
+                    # re-plocate a duplicate that appears again later in the CSV.
+                    seen_keys.add((path, file_name))
                     continue
+
+                key = (path, file_name)
+                if key in seen_keys:
+                    # Advance resume cursor (CSV row position) without re-plocate.
+                    stats.duplicate_input_skipped += 1
+                    stats.checked += 1
+                    if stats.checked % 10000 == 0:
+                        save_checkpoint(
+                            job_dir,
+                            checked=stats.checked,
+                            missing=stats.missing,
+                            input_csv=input_csv,
+                            status="running",
+                        )
+                        print(
+                            f"  missing scan progress: checked={stats.checked} "
+                            f"missing={stats.missing} "
+                            f"dupes_skipped={stats.duplicate_input_skipped} "
+                            f"{_format_scan_timing(scan_started, stats.checked - checked_at_start)}",
+                            flush=True,
+                        )
+                    continue
+                seen_keys.add(key)
 
                 batch.append((path, file_name))
                 if len(batch) < batch_size:
@@ -175,6 +208,7 @@ def scan_missing(
                     print(
                         f"  missing scan progress: checked={stats.checked} "
                         f"missing={stats.missing} "
+                        f"dupes_skipped={stats.duplicate_input_skipped} "
                         f"{_format_scan_timing(scan_started, stats.checked - checked_at_start)}",
                         flush=True,
                     )
@@ -208,8 +242,12 @@ def scan_missing(
             if client is not None:
                 client.close()
 
+    stats.elapsed_seconds = max(0.0, time.monotonic() - scan_started)
+    stats.unique_files = len(seen_keys)
     print(
         f"Missing scan completed: checked={stats.checked} missing={stats.missing} "
+        f"unique_files={stats.unique_files} input_rows={stats.input_rows} "
+        f"dupes_skipped={stats.duplicate_input_skipped} "
         f"{_format_scan_timing(scan_started, max(0, stats.checked - checked_at_start))} "
         f"file={missing_csv}",
         flush=True,

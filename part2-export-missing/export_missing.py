@@ -1,27 +1,7 @@
-#!/usr/bin/env python3
-"""
-CLI: export danh sách file không tìm thấy trên remote storage.
-
-CLI one-shot — không phải API, không gọi HTTP service.
-
-Port logic từ:
-  - migration-service VbAttachmentMissingExportWriter (Oracle → CSV)
-  - storage-service MissingExportJobService (plocate scan → missing CSV/XLSX)
-
-Usage:
-  python export_missing.py
-  python export_missing.py --format csv
-  python export_missing.py --input-csv ./output/missing-export/input.csv
-  python export_missing.py --resume ./output/missing-export/<jobId>
-  python export_missing.py --resume ./output/missing-export/<jobId> --skip-checked 930000
-  python export_missing.py --export-only ./output/missing-export/<jobId>
-"""
-
 from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import sys
 import uuid
 from datetime import datetime
@@ -34,8 +14,14 @@ if str(_PART_DIR) not in sys.path:
 
 from config import load_settings
 from db import count_csv_data_rows, write_all_attachments_csv
-from missing_report import choose_output_format, write_missing_excel
-from missing_scan import load_checkpoint, scan_missing
+from missing_report import (
+    ReportSummary,
+    choose_output_format,
+    count_unique_path_filename,
+    write_missing_csv_unique,
+    write_missing_excel,
+)
+from missing_scan import ScanStats, load_checkpoint, scan_missing
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -133,21 +119,36 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     missing_csv = job_dir / "missing.csv"
+    started_at = datetime.now()
     stats = scan_missing(
         settings,
         input_csv,
         missing_csv,
         skip_checked=skip_checked,
     )
+    finished_at = datetime.now()
+
+    unique_missing, _ = count_unique_path_filename(missing_csv)
+    summary = _build_summary(
+        stats=stats,
+        job_dir=job_dir,
+        input_csv=input_csv,
+        missing_csv=missing_csv,
+        started_at=started_at,
+        finished_at=finished_at,
+        unique_missing=unique_missing,
+    )
 
     out = _write_report(
         missing_csv,
-        missing_count=stats.missing,
+        missing_count=unique_missing,
         format_arg="" if args.format == "auto" else args.format,
         output_dir=settings.output_dir,
+        summary=summary,
     )
     print(
-        f"Done. checked={stats.checked} missing={stats.missing} report={out.resolve()}",
+        f"Done. checked={stats.checked} unique_files={stats.unique_files} "
+        f"missing={unique_missing} report={out.resolve()}",
         flush=True,
     )
     print(f"Raw missing CSV kept at: {missing_csv.resolve()}", flush=True)
@@ -162,17 +163,81 @@ def _export_only_report(job_dir: Path, *, format_arg: str) -> int:
         raise SystemExit(f"missing.csv not found in job dir: {job_dir}")
 
     settings = load_settings(require_oracle=False, require_ssh=False)
-    missing_count = count_csv_data_rows(missing_csv)
-    print(f"Export-only from {job_dir} (missing rows={missing_count})", flush=True)
+    unique_missing, raw_missing = count_unique_path_filename(missing_csv)
+    checkpoint = load_checkpoint(job_dir)
+    input_csv = job_dir / "input.csv"
+    if checkpoint is not None and checkpoint.input_csv:
+        candidate = Path(checkpoint.input_csv)
+        if candidate.is_file():
+            input_csv = candidate
+
+    total_input = count_csv_data_rows(input_csv) if input_csv.is_file() else 0
+    unique_input = 0
+    if input_csv.is_file():
+        unique_input, _ = count_unique_path_filename(input_csv)
+
+    checked = checkpoint.checked if checkpoint is not None else total_input
+    unique_files = unique_input or checked
+    summary = ReportSummary(
+        total_input_rows=total_input,
+        unique_files=unique_files,
+        missing_files=unique_missing,
+        found_files=max(0, unique_files - unique_missing) if unique_files else 0,
+        duplicate_input_skipped=max(0, total_input - unique_input) if total_input else 0,
+        job_dir=str(job_dir),
+        input_csv=str(input_csv) if input_csv.is_file() else "",
+        missing_csv=str(missing_csv),
+        extra={
+            "Export mode": "export-only (no rescan)",
+            "Raw missing.csv rows": str(raw_missing),
+        },
+    )
+
+    print(
+        f"Export-only from {job_dir} "
+        f"(raw missing={raw_missing}, unique missing={unique_missing})",
+        flush=True,
+    )
     out = _write_report(
         missing_csv,
-        missing_count=missing_count,
+        missing_count=unique_missing,
         format_arg=format_arg,
         output_dir=settings.output_dir,
+        summary=summary,
     )
-    print(f"Done. missing={missing_count} report={out.resolve()}", flush=True)
+    print(f"Done. missing={unique_missing} report={out.resolve()}", flush=True)
     print(f"Raw missing CSV: {missing_csv.resolve()}", flush=True)
     return 0
+
+
+def _build_summary(
+    *,
+    stats: ScanStats,
+    job_dir: Path,
+    input_csv: Path,
+    missing_csv: Path,
+    started_at: datetime,
+    finished_at: datetime,
+    unique_missing: int,
+) -> ReportSummary:
+    unique_files = stats.unique_files or max(0, stats.checked - stats.duplicate_input_skipped)
+    rate = 0.0
+    if stats.elapsed_seconds > 0 and stats.checked > 0:
+        rate = stats.checked / stats.elapsed_seconds
+    return ReportSummary(
+        total_input_rows=stats.input_rows or stats.checked,
+        unique_files=unique_files,
+        missing_files=unique_missing,
+        found_files=max(0, unique_files - unique_missing),
+        duplicate_input_skipped=stats.duplicate_input_skipped,
+        elapsed_seconds=stats.elapsed_seconds,
+        check_rate_per_sec=rate,
+        started_at=started_at.strftime("%Y-%m-%d %H:%M:%S"),
+        finished_at=finished_at.strftime("%Y-%m-%d %H:%M:%S"),
+        job_dir=str(job_dir.resolve()),
+        input_csv=str(input_csv.resolve()),
+        missing_csv=str(missing_csv.resolve()),
+    )
 
 
 def _write_report(
@@ -181,6 +246,7 @@ def _write_report(
     missing_count: int,
     format_arg: str,
     output_dir: Path,
+    summary: Optional[ReportSummary] = None,
 ) -> Path:
     fmt = choose_output_format(missing_count, format_arg)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -188,12 +254,12 @@ def _write_report(
 
     if fmt == "csv":
         out = output_dir / f"missing-files_{stamp}.csv"
-        shutil.copyfile(missing_csv, out)
+        write_missing_csv_unique(missing_csv, out, summary=summary)
         return out
 
     out = output_dir / f"missing-files_{stamp}.xlsx"
     try:
-        write_missing_excel(missing_csv, out)
+        write_missing_excel(missing_csv, out, summary=summary)
         return out
     except Exception as exc:  # noqa: BLE001 — fall back so scan result is never lost
         print(f"Excel export failed ({exc}); falling back to CSV.", flush=True)
@@ -203,7 +269,7 @@ def _write_report(
             except OSError:
                 pass
         csv_out = output_dir / f"missing-files_{stamp}.csv"
-        shutil.copyfile(missing_csv, csv_out)
+        write_missing_csv_unique(missing_csv, csv_out, summary=summary)
         return csv_out
 
 
