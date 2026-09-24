@@ -60,6 +60,7 @@ class Settings:
     missing_export_retry_attempts: int
     missing_export_retry_backoff_ms: int
     missing_export_search_by_file_name: bool
+    exclude_deleted: bool
     missing_export_limit: int
     missing_export_work_dir: Path
 
@@ -93,6 +94,7 @@ def load_settings(*, require_oracle: bool = True, require_ssh: bool = True) -> S
         missing_export_retry_attempts=_int("MISSING_EXPORT_RETRY_ATTEMPTS", 3),
         missing_export_retry_backoff_ms=_int("MISSING_EXPORT_RETRY_BACKOFF_MS", 500),
         missing_export_search_by_file_name=_bool("MISSING_EXPORT_SEARCH_BY_FILE_NAME", False),
+        exclude_deleted=_bool("EXCLUDE_DELETED", False),
         missing_export_limit=_int("MISSING_EXPORT_LIMIT", 0),
         missing_export_work_dir=Path(
             os.getenv("MISSING_EXPORT_WORK_DIR") or str(_DIR / "output" / "missing-export")

@@ -94,6 +94,7 @@ Report mặc định:
 | `REMOTE_STORAGE_ROOT_FOLDERS` | Các root Upload được chấp nhận khi match | |
 | `MISSING_EXPORT_CSV_PATH` | CSV cố định; nếu đã có file → reuse, bỏ dump Oracle | *(rỗng)* |
 | `MISSING_EXPORT_WORK_DIR` | Thư mục job (input/missing) | `./output/missing-export` |
+| `EXCLUDE_DELETED` | `true` → thêm `WHERE NVL(IS_DELETE, 0) = 0` khi dump Oracle | `false` |
 | `MISSING_EXPORT_LIMIT` | Giới hạn số row dump Oracle (`0` = all) | `0` |
 | `MISSING_EXPORT_BATCH_SIZE` | Số path / 1 SSH exec | `100` |
 | `MISSING_EXPORT_THROTTLE_EVERY` | Pause sau mỗi N check | `500` |

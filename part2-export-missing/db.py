@@ -35,6 +35,9 @@ def write_all_attachments_csv(settings: Settings, csv_file: Path) -> int:
     schema = settings.oracle_schema
     table = f"{schema}.VB_ATTACHMENT"
     sql = f"SELECT FILE_PATH, FILE_NAME FROM {table}"
+    if settings.exclude_deleted:
+        sql += " WHERE NVL(IS_DELETE, 0) = 0"
+        print("  Oracle filter: NVL(IS_DELETE, 0) = 0", flush=True)
     if settings.missing_export_limit > 0:
         sql = f"SELECT * FROM ({sql}) WHERE ROWNUM <= :row_limit"
 
