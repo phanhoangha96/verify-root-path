@@ -10,6 +10,23 @@ from mapping import collapse_slashes, normalize_relative_path, trim_trailing_sla
 BATCH_BEGIN = "__PLOCATE_BEGIN__"
 BATCH_END = "__PLOCATE_END__"
 
+# Unescaped * ? [ makes plocate switch from substring search to glob.
+# Glob must match the whole path, and [...] is a character class.
+_PLOCATE_GLOB_TRANS = str.maketrans(
+    {
+        "\\": r"\\",
+        "*": r"\*",
+        "?": r"\?",
+        "[": r"\[",
+        "]": r"\]",
+    }
+)
+
+
+def escape_plocate_pattern(path: str) -> str:
+    """Escape glob metacharacters so plocate keeps substring matching."""
+    return path.translate(_PLOCATE_GLOB_TRANS)
+
 
 class PlocateClient:
     def __init__(self, settings: Settings):
@@ -63,7 +80,8 @@ class PlocateClient:
 
         command = self._build_batch_command()
         stdin, stdout, stderr = self._client.exec_command(command, timeout=120)
-        payload = "\n".join(relative_paths) + "\n"
+        # Escape only the query. Matching below still uses the original relative path.
+        payload = "\n".join(escape_plocate_pattern(path) for path in relative_paths) + "\n"
         stdin.write(payload)
         stdin.channel.shutdown_write()
         out = stdout.read().decode("utf-8", errors="replace")
