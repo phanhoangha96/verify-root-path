@@ -12,6 +12,7 @@ if str(_PART_DIR) not in sys.path:
 from solr_backfill_db import OBJECT_TYPE_INCOMING, OBJECT_TYPE_OUTGOING, DocRow
 from solr_backfill_solr import (
     MAX_SOLR_DEDICATED_FIELD,
+    MAX_SOLR_STORED_FIELD,
     MAX_SOLR_TERM_LENGTH,
     add_docs_with_split,
     clip_solr_doc,
@@ -93,7 +94,7 @@ def test_clip_solr_term() -> None:
 
 def test_clip_solr_doc() -> None:
     warnings: List[str] = []
-    places = "P" * (MAX_SOLR_TERM_LENGTH + 3)
+    places = "P" * (MAX_SOLR_STORED_FIELD + 3)
     doc = clip_solr_doc(
         {
             "objectId": "99",
@@ -107,7 +108,7 @@ def test_clip_solr_doc() -> None:
         log=warnings.append,
     )
     assert len(doc["searchText"]) == MAX_SOLR_TERM_LENGTH
-    assert len(doc["otherReceivePlaces"]) == MAX_SOLR_TERM_LENGTH
+    assert len(doc["otherReceivePlaces"]) == MAX_SOLR_STORED_FIELD
     assert len(doc["quote"]) == MAX_SOLR_DEDICATED_FIELD
     assert doc["bookNumber"] == "123"
     assert "empty" not in doc

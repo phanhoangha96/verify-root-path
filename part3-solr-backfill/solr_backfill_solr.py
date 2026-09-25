@@ -9,11 +9,12 @@ from base64 import b64encode
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlencode
 
-# Lucene MAX_TERM_LENGTH. Field meta là type string => toàn bộ giá trị là 1 term,
-# mọi field đều phải <= giới hạn này (kể cả otherReceivePlaces).
+# Lucene MAX_TERM_LENGTH. searchText / instruction / comment là 1 term.
 MAX_SOLR_TERM_LENGTH = 32766
 # quote / docCode stay one token after normalize — keep them short.
 MAX_SOLR_DEDICATED_FIELD = 4000
+# otherReceivePlaces: khớp solr-backfill-service SolrSupport.MAX_SOLR_STORED_FIELD.
+MAX_SOLR_STORED_FIELD = 1_048_576
 # Field meta dùng type string (1 term nguyên vẹn) để wildcard substring (*5/9*)
 # match xuyên qua '/'; text_general tách token tại '/' nên keyword chứa dấu câu
 # không bao giờ match. Khớp eoffice-solr init-solr-document-schema.sh.
@@ -49,7 +50,9 @@ def clip_solr_doc(doc: Dict, object_id: str = "", log=None) -> Dict:
         if value in (None, ""):
             continue
         if isinstance(value, str):
-            if key in {"docCode", "quote", "outsidePublisherName", "bookNumber"}:
+            if key == "otherReceivePlaces":
+                limit = MAX_SOLR_STORED_FIELD
+            elif key in {"docCode", "quote", "outsidePublisherName", "bookNumber"}:
                 limit = MAX_SOLR_DEDICATED_FIELD
             else:
                 limit = MAX_SOLR_TERM_LENGTH

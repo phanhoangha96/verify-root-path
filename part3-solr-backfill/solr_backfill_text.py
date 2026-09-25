@@ -33,20 +33,15 @@ def remove_vietnamese_tones(value: Optional[str]) -> str:
 
 
 def normalize_search_value(value: Optional[str]) -> str:
-    """Khop eoffice-business DocMetaSolrServiceImpl.normalizeSearchValue va
-    eoffice-solr DocServiceImpl.normalizeSearchPhrase: bo dau, IN HOA, GIU moi
-    ky tu hien thi (chu, so, dau cau, ky hieu %, &, ()...) de search khop dung
-    ky tu nguoi dung nhap. Chi xoa khoang trang (search theo cum bat chap dau
-    cach), ky tu dieu khien (Cc - gay loi transport) va ky tu format vo hinh
-    (Cf - zero-width space, soft hyphen, bidi control pha matching).
-    Ky tu dac biet Lucene duoc eoffice-solr escape bang ClientUtils.escapeQueryChars
-    luc build query nen khong gay loi parse.
+    """Khớp solr-backfill-service TextNormalizer tại bd118205: bỏ dấu, IN HOA,
+    giữ mọi ký tự hiển thị (chữ, số, dấu câu, ký hiệu %, &, ()...). Chỉ xóa
+    khoảng trắng, ký tự điều khiển (Cc) và ký tự format vô hình (Cf).
+    "V/v: mua sắm" -> "V/V:MUASAM".
     """
     if not is_true(value):
         return ""
     text = remove_vietnamese_tones(value)
-    # Java (?U)[\s\p{Cc}\p{Cf}]+: isspace() tuong duong \s Unicode,
-    # unicodedata.category "Cc"/"Cf" tuong duong \p{Cc}/\p{Cf}.
+    # Java (?U)[\s\p{Cc}\p{Cf}]+
     kept = [ch for ch in text if not ch.isspace() and unicodedata.category(ch) not in ("Cc", "Cf")]
     return "".join(kept).upper()
 
@@ -54,9 +49,8 @@ def normalize_search_value(value: Optional[str]) -> str:
 def normalize_place_list(value: Optional[str], max_token_len: int = 32766) -> str:
     """Normalize each receive-place separately and join with spaces.
 
-    Field meta la type string (1 term nguyen ven) nen wildcard substring van
-    match xuyen dau cach; gia tri cuoi duoc clip_solr_doc cat o 32766 ky tu
-    (Lucene MAX_TERM_LENGTH).
+    Token dài hơn 32766 ký tự được cắt trước khi ghép. clip_solr_doc cắt
+    cả field otherReceivePlaces ở 1_048_576, khớp solr-backfill-service.
     """
     if not is_true(value):
         return ""

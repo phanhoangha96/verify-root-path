@@ -18,14 +18,14 @@ def test_normalize_search_value() -> None:
     assert normalize_search_value("Số 123") == "SO123"
     assert normalize_search_value("test đồng nhất 18/9") == "TESTDONGNHAT18/9"
     assert normalize_search_value("123/QĐ-UBND") == "123/QD-UBND"
-    # Dau cau va ky hieu duoc GIU de search khop dung ky tu nguoi dung nhap.
+    # Dấu câu và ký hiệu được giữ, khớp TextNormalizer bd118205.
     assert normalize_search_value("mua thu, bảo trì") == "MUATHU,BAOTRI"
     assert normalize_search_value("V/v: mua sắm") == "V/V:MUASAM"
     assert normalize_search_value("%") == "%"
     assert normalize_search_value("50%") == "50%"
     assert normalize_search_value("tăng (10%)") == "TANG(10%)"
     assert normalize_search_value("*\\a|b&\"c\"~?") == "*\\A|B&\"C\"~?"
-    # Khoang trang (ke ca Unicode), ky tu dieu khien (Cc) va format vo hinh (Cf) van bi xoa.
+    # Khoảng trắng, ký tự điều khiển và ký tự format vô hình bị xóa.
     assert normalize_search_value("   ") == ""
     assert normalize_search_value("A B") == "AB"
     assert normalize_search_value("A B") == "AB"

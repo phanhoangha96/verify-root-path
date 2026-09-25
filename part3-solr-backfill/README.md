@@ -10,7 +10,7 @@ Máy chạy phải **reach được Oracle và Solr** (thường chạy ngay tr�
 
 `eoffice-business` chỉ index **realtime** khi tạo/sửa văn bản, comment, process. Script này backfill dữ liệu cũ.
 
-Chuỗi `searchText` giống Java `DocMetaSolrServiceImpl`: bỏ dấu tiếng Việt, bỏ khoảng trắng / ký tự Solr đặc biệt, uppercase.
+Chuỗi `searchText` khớp `solr-backfill-service` `TextNormalizer` (bd118205): bỏ dấu tiếng Việt, viết hoa, giữ dấu câu và ký hiệu (`V/v: mua sắm` → `V/V:MUASAM`). Chỉ xóa khoảng trắng, ký tự điều khiển và ký tự format vô hình.
 
 Incoming `searchText`: `docCode`, `quote`, `publisherName`, `outsidePublisherName`, `bookNumber`, `note`, comment, process note.
 
@@ -186,7 +186,7 @@ curl -sS "http://localhost:8983/solr/<CORE>/admin/ping?wt=json"
 ```
 
 **Outgoing chậm, errors > 0, skipped = 0**  
-Solr reject cả batch (thường field `searchText` / `otherReceivePlaces` vượt 32766 ký tự — Lucene immense term). Script cắt field quá dài trước khi ghi, và khi batch vẫn fail thì **chia đôi** để cô lập doc lỗi (không ghi lại từng doc). Log có `WARN truncated ...` / `WARN Solr batch size=... splitting`. Incoming đã xong thì có thể chạy lại chỉ văn bản đi: `--source NEW --object-type 2` (upsert, không nhân bản).
+Solr reject cả batch (thường field `searchText` vượt 32766 ký tự — Lucene immense term). Script cắt `searchText` / `instruction` / `comment` ở 32766, field form ngắn (`docCode`, `quote`, `bookNumber`, `outsidePublisherName`) ở 4000, `otherReceivePlaces` ở 1_048_576. Khi batch vẫn fail thì **chia đôi** để cô lập doc lỗi; doc một mình vẫn lỗi ở `otherReceivePlaces` thì bỏ field đó rồi ghi lại. Log có `WARN truncated ...` / `WARN Solr batch size=... splitting`. Incoming đã xong thì có thể chạy lại chỉ văn bản đi: `--source NEW --object-type 2` (upsert, không nhân bản).
 
 **scanned=0, errors=0**  
 Query không ra hàng: sai schema, bảng trống, hoặc toàn `IS_DELETE=1`. Kiểm tra:
